@@ -349,7 +349,7 @@
     </div>
     <div class="card">
       <h2>製品マスタの取込</h2>
-      <p class="muted" style="margin-top:0">列：<code>型番</code> <code>品名</code> <code>区分</code>（単品/完成品/セット） <code>カテゴリ</code> <code>単位</code> <code>単価</code> <code>発注点</code> <code>備考</code>（1行目が見出し）。型番が既にあれば上書き、なければ追加します。</p>
+      <p class="muted" style="margin-top:0">列：<code>型番</code> <code>品名</code>（例：Bluetoothヘッドセット、無線機） <code>区分</code>（単品/完成品/セット） <code>カテゴリ</code>（例：Bluetooth / 無線 / 有線 / 部品 / アクセサリ） <code>単位</code> <code>単価</code> <code>発注点</code> <code>備考</code>（1行目が見出し）。型番が既にあれば上書き、なければ追加します。</p>
       <div class="row">
         <button id="t-products" class="btn fix">テンプレートをダウンロード</button>
         <input type="file" id="f-products" accept=".xlsx,.xls,.csv">
@@ -387,11 +387,11 @@
     <h3 id="p-modal-title">製品を追加</h3>
     <input type="hidden" id="p-id">
     <div class="row">
-      <div><label class="f">型番 *</label><input type="text" id="p-code"></div>
-      <div><label class="f">品名 *</label><input type="text" id="p-name"></div>
+      <div><label class="f">型番 *</label><input type="text" id="p-code" placeholder="例：SSW-1121"></div>
+      <div><label class="f">品名 *（何の製品か分かる名前）</label><input type="text" id="p-name" placeholder="例：Bluetoothヘッドセット、無線機、充電ステーション"></div>
     </div>
     <div class="row" style="margin-top:10px">
-      <div><label class="f">カテゴリ</label><input type="text" id="p-cat" list="cat-list"><datalist id="cat-list"></datalist></div>
+      <div><label class="f">カテゴリ（例：Bluetooth / 無線 / 有線 / 部品 / アクセサリ）</label><input type="text" id="p-cat" list="cat-list" placeholder="一覧から選ぶか入力"><datalist id="cat-list"></datalist></div>
       <div><label class="f">単位</label><input type="text" id="p-unit" value="台"></div>
       <div><label class="f">発注点（これ以下で警告）</label><input type="number" id="p-reorder" value="0" min="0"></div>
       <div><label class="f">仕入単価（円・任意・在庫金額の計算用）</label><input type="number" id="p-price" inputmode="decimal" min="0" step="0.01" placeholder="未設定"></div>
@@ -601,7 +601,10 @@ function renderEntryLists() {
   var kinds = state.entryType === 'in' ? ['supplier', 'both'] : state.entryType === 'out' ? ['customer', 'both'] : ['customer', 'supplier', 'both'];
   var cur = $('e-partner').value;
   $('e-partner').innerHTML = '<option value="">（なし）</option>' + state.partners.filter(function(p) { return p.active && kinds.indexOf(p.kind) >= 0; }).map(function(p) { return '<option value="' + p.id + '"' + (String(p.id) === cur ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('');
-  $('cat-list').innerHTML = Object.keys(state.products.reduce(function(a, p) { if (p.category) a[p.category] = 1; return a; }, {})).map(function(c) { return '<option value="' + esc(c) + '">'; }).join('');
+  // カテゴリ候補：既存のカテゴリ ＋ 標準の候補（Bluetooth / 無線 / 有線 / 部品 / アクセサリ）
+  var catSet = state.products.reduce(function(a, p) { if (p.category) a[p.category] = 1; return a; }, {});
+  ['Bluetooth', '無線', '有線', '部品', 'アクセサリ'].forEach(function(c) { catSet[c] = 1; });
+  $('cat-list').innerHTML = Object.keys(catSet).map(function(c) { return '<option value="' + esc(c) + '">'; }).join('');
 }
 function resolveProduct(text) {
   var t = (text || '').trim().toLowerCase(); if (!t) return null;
@@ -926,7 +929,7 @@ function wbOf(sheets) { var wb = XLSX.utils.book_new(); sheets.forEach(function(
 $('x-stock').addEventListener('click', function() { download(wbOf([{ name: '在庫一覧', rows: sheetStock() }]), '在庫一覧'); });
 $('x-history').addEventListener('click', function() { download(wbOf([{ name: '入出庫履歴', rows: sheetHistory(filteredHistory()) }]), '入出庫履歴'); });
 $('x-all').addEventListener('click', function() { download(wbOf([{ name: '在庫一覧', rows: sheetStock() }, { name: '入出庫履歴', rows: sheetHistory(state.tx) }, { name: '製品マスタ', rows: sheetProducts() }, { name: '構成', rows: sheetBom() }, { name: '取引先', rows: sheetPartners() }]), '幹開発_在庫データ'); });
-$('t-products').addEventListener('click', function() { download(wbOf([{ name: '製品マスタ', rows: [{ '型番': 'SSW-1121', '品名': 'VEXA ヘッドセット', '区分': '単品', 'カテゴリ': 'VEXA', '単位': '台', '単価': '', '発注点': 10, '呼び名': 'ベクサ, ヘッドセット', '備考': '' },{ '型番': 'SQ-SET-A', '品名': 'square 基本セット', '区分': 'セット', 'カテゴリ': 'SQUARE', '単位': 'セット', '単価': '', '発注点': 0, '備考': '構成は「構成」シートで登録' }] }]), '製品マスタ_テンプレート'); });
+$('t-products').addEventListener('click', function() { download(wbOf([{ name: '製品マスタ', rows: [{ '型番': 'SSW-1121', '品名': 'Bluetoothヘッドセット（VEXA）', '区分': '単品', 'カテゴリ': 'Bluetooth', '単位': '台', '単価': '', '発注点': 10, '呼び名': 'ベクサ, ヘッドセット', '備考': '' },{ '型番': 'SQ-SET-A', '品名': '無線機 基本セット（square）', '区分': 'セット', 'カテゴリ': '無線', '単位': 'セット', '単価': '', '発注点': 0, '備考': '構成は「構成」シートで登録' }] }]), '製品マスタ_テンプレート'); });
 $('t-bom').addEventListener('click', function() { download(wbOf([{ name: '構成', rows: [{ '親型番': 'SQ-SET-A', '子型番': 'SQ-BASE', '数量': 1 }, { '親型番': 'SQ-SET-A', '子型番': 'SQ-HANDSET', '数量': 4 }] }]), '構成_テンプレート'); });
 $('t-tx').addEventListener('click', function() { download(wbOf([{ name: '入出庫', rows: [{ '日付': todayStr(), '種別': '入庫', '型番': 'SSW-1121', '取引先': '', '数量': 10, '仕入単価': '', '販売単価': '', '伝票番号': '', 'シリアル': '', '備考': '初期在庫' }] }]), '入出庫_テンプレート'); });
 
