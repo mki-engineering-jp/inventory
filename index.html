@@ -106,6 +106,11 @@
   .toast.show { opacity: 1; }
 
   /* modal */
+  .photo-thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .photo-thumbs .th { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #f4f6f8; }
+  .photo-thumbs .th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .photo-thumbs .th button { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; min-height: 0; padding: 0; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; border: 0; font-size: 14px; line-height: 24px; }
+  .photo-view img { width: 100%; height: auto; border-radius: 10px; margin-bottom: 10px; display: block; }
   .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: center; justify-content: center; z-index: 40; padding: 16px; }
   .modal-bg.show { display: flex; }
   .modal { background: #fff; border-radius: 14px; width: 100%; max-width: 520px; padding: 20px; max-height: 90vh; overflow: auto; }
@@ -257,6 +262,15 @@
         <label class="f">備考</label>
         <input type="text" id="e-note" placeholder="任意（例：初期在庫、不良品返却 など）">
       </div>
+      <div style="margin-top:12px">
+        <label class="f">写真（任意・最大3枚。伝票・シリアル刻印・梱包など。自動で縮小して保存）</label>
+        <div class="row" style="align-items:center">
+          <button type="button" id="e-photo-btn" class="btn fix">📷 写真を追加</button>
+          <input type="file" id="e-photo" accept="image/*" capture="environment" multiple class="hidden">
+          <span class="muted" id="e-photo-msg"></span>
+        </div>
+        <div class="photo-thumbs" id="e-photo-thumbs"></div>
+      </div>
       <div id="entry-msg" class="msg"></div>
       <button id="entry-submit" class="btn primary big" style="width:100%;margin-top:14px">登録する</button>
       <div class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;font-size:12px">
@@ -268,7 +282,7 @@
       <h2>最近の登録</h2>
       <div class="tbl-wrap" style="max-height:40vh">
         <table id="recent-table">
-          <thead><tr><th>日付</th><th>種別</th><th>製品</th><th class="num">数量</th><th class="hide-sm">取引先</th><th class="hide-sm">登録者</th><th></th></tr></thead>
+          <thead><tr><th>日付</th><th>種別</th><th>製品</th><th class="num">数量</th><th class="hide-sm">取引先</th><th>写真</th><th class="hide-sm">登録者</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -289,7 +303,7 @@
       <div class="muted" id="h-summary" style="margin-bottom:8px"></div>
       <div class="tbl-wrap">
         <table id="history-table">
-          <thead><tr><th>日付</th><th>種別</th><th>型番</th><th class="hide-sm">品名</th><th class="num">数量</th><th class="hide-sm">取引先</th><th class="hide-sm">伝票番号</th><th class="hide-sm">シリアル</th><th class="hide-sm">備考</th><th class="hide-sm">登録者</th><th></th></tr></thead>
+          <thead><tr><th>日付</th><th>種別</th><th>型番</th><th class="hide-sm">品名</th><th class="num">数量</th><th class="hide-sm">取引先</th><th class="hide-sm">伝票番号</th><th class="hide-sm">シリアル</th><th class="hide-sm">備考</th><th>写真</th><th class="hide-sm">登録者</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -416,6 +430,13 @@
 </div>
 
 <!-- 取引先編集モーダル -->
+<div class="modal-bg" id="ph-modal">
+  <div class="modal">
+    <h3 id="ph-title">写真</h3>
+    <div class="photo-view" id="ph-body"></div>
+    <div class="row" style="justify-content:flex-end"><button class="btn" id="ph-close">閉じる</button></div>
+  </div>
+</div>
 <div class="modal-bg" id="pa-modal">
   <div class="modal">
     <h3 id="pa-modal-title">取引先を追加</h3>
@@ -636,10 +657,60 @@ $('e-qty').addEventListener('input', updateProductInfo);
 $('qty-minus').addEventListener('click', function() { var v = parseInt($('e-qty').value || '0', 10) - 1; if (state.entryType !== 'adjust' && v < 1) v = 1; $('e-qty').value = v; });
 $('qty-plus').addEventListener('click', function() { $('e-qty').value = parseInt($('e-qty').value || '0', 10) + 1; });
 
+// ───────── 写真（Supabase Storage: inv-photos、アップロード前に長辺1280pxへ縮小） ─────────
+var PHOTO_BUCKET = 'inv-photos', PHOTO_MAX = 3, pendingPhotos = [];
+function shrinkImage(file) {
+  return new Promise(function(resolve, reject) {
+    var url = URL.createObjectURL(file), img = new Image();
+    img.onload = function() {
+      var max = 1280, w = img.naturalWidth, h = img.naturalHeight, r = Math.min(1, max / Math.max(w, h));
+      var c = document.createElement('canvas'); c.width = Math.round(w * r); c.height = Math.round(h * r);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      c.toBlob(function(b) { b ? resolve(b) : reject(new Error('画像の変換に失敗')); }, 'image/jpeg', 0.75);
+    };
+    img.onerror = function() { URL.revokeObjectURL(url); reject(new Error('画像を読み込めません')); };
+    img.src = url;
+  });
+}
+function renderPendingPhotos() {
+  $('e-photo-thumbs').innerHTML = pendingPhotos.map(function(ph, i) { return '<div class="th"><img src="' + ph.url + '"><button type="button" data-rm="' + i + '" title="外す">×</button></div>'; }).join('');
+  $('e-photo-thumbs').querySelectorAll('[data-rm]').forEach(function(b) { b.addEventListener('click', function() { var i = +b.getAttribute('data-rm'); URL.revokeObjectURL(pendingPhotos[i].url); pendingPhotos.splice(i, 1); renderPendingPhotos(); }); });
+  $('e-photo-msg').textContent = pendingPhotos.length ? pendingPhotos.length + ' 枚（合計 ' + Math.round(pendingPhotos.reduce(function(a, p) { return a + p.blob.size; }, 0) / 1024) + ' KB）' : '';
+}
+function clearPendingPhotos() { pendingPhotos.forEach(function(p) { URL.revokeObjectURL(p.url); }); pendingPhotos = []; renderPendingPhotos(); }
+$('e-photo-btn').addEventListener('click', function() { if (pendingPhotos.length >= PHOTO_MAX) { toast('写真は最大 ' + PHOTO_MAX + ' 枚までです'); return; } $('e-photo').click(); });
+$('e-photo').addEventListener('change', function() {
+  var files = Array.prototype.slice.call(this.files).slice(0, PHOTO_MAX - pendingPhotos.length); this.value = '';
+  if (!files.length) return; $('e-photo-msg').textContent = '縮小中…';
+  Promise.all(files.map(shrinkImage)).then(function(blobs) {
+    blobs.forEach(function(b) { pendingPhotos.push({ blob: b, url: URL.createObjectURL(b) }); }); renderPendingPhotos();
+  }).catch(function(e) { toast(e.message); renderPendingPhotos(); });
+});
+function uploadPhotosFor(txId) {
+  if (!pendingPhotos.length || !txId) return Promise.resolve([]);
+  var paths = [];
+  var chain = Promise.resolve();
+  pendingPhotos.forEach(function(ph, i) {
+    var path = 'tx/' + txId + '/' + Date.now() + '_' + i + '.jpg';
+    chain = chain.then(function() { return sb.storage.from(PHOTO_BUCKET).upload(path, ph.blob, { contentType: 'image/jpeg', upsert: false }); }).then(function(r) { if (r.error) throw r.error; paths.push(path); });
+  });
+  return chain.then(function() { return sb.from('inv_transactions').update({ photos: paths }).eq('id', txId); }).then(function(r) { if (r.error) throw r.error; return paths; });
+}
+function deletePhotos(paths) { if (!paths || !paths.length) return Promise.resolve(); return sb.storage.from(PHOTO_BUCKET).remove(paths).then(function() {}); }
+function openPhotos(t) {
+  var p = productById(t.product_id) || {};
+  $('ph-title').textContent = fmtDate(t.tx_date) + ' ' + TYPE_LABEL[t.type] + ' ' + (p.code || '') + ' × ' + t.qty;
+  $('ph-body').innerHTML = '<div class="muted">読み込み中…</div>'; $('ph-modal').classList.add('show');
+  Promise.all((t.photos || []).map(function(path) { return sb.storage.from(PHOTO_BUCKET).createSignedUrl(path, 3600); })).then(function(rs) {
+    $('ph-body').innerHTML = rs.map(function(r) { return r.error || !r.data ? '<div class="muted">表示できません: ' + esc(r.error ? r.error.message : '') + '</div>' : '<a href="' + r.data.signedUrl + '" target="_blank" rel="noopener"><img src="' + r.data.signedUrl + '" loading="lazy"></a>'; }).join('') || '<div class="muted">写真はありません</div>';
+  });
+}
+$('ph-close').addEventListener('click', function() { $('ph-modal').classList.remove('show'); });
+$('ph-modal').addEventListener('click', function(e) { if (e.target === this) this.classList.remove('show'); });
 $('entry-clear').addEventListener('click', function() {
   $('e-qty').value = 1; $('e-ref').value = ''; $('e-note').value = ''; $('e-price').value = ''; $('e-serial').value = ''; $('e-partner').value = ''; $('e-product').value = '';
   $('e-date').value = todayStr(); $('e-unbuild').checked = false;
-  showMsg('entry-msg', '', ''); showMsg('mic-msg', '', ''); updateProductInfo();
+  clearPendingPhotos(); showMsg('entry-msg', '', ''); showMsg('mic-msg', '', ''); updateProductInfo();
 });
 $('entry-submit').addEventListener('click', function() {
   var p = resolveProduct($('e-product').value);
@@ -660,19 +731,26 @@ $('entry-submit').addEventListener('click', function() {
   var q, label;
   if (state.entryType === 'build') {
     var un = $('e-unbuild').checked; label = un ? '分解' : '組立';
-    q = sb.rpc('inv_build', { p_product_id: p.id, p_qty: qty, p_date: date, p_note: note, p_unbuild: un });
+    q = sb.rpc('inv_build', { p_product_id: p.id, p_qty: qty, p_date: date, p_note: note, p_unbuild: un }).then(function(res) {
+      if (res.error || !pendingPhotos.length) return res;
+      return sb.from('inv_transactions').select('id').eq('product_id', p.id).order('id', { ascending: false }).limit(1).then(function(r) { return uploadPhotosFor(r.data && r.data[0] ? r.data[0].id : null).then(function() { return res; }); });
+    });
   } else if (state.entryType === 'out' && p.kind === 'kit') {
     label = 'セット出庫';
     q = sb.rpc('inv_kit_out', { p_product_id: p.id, p_qty: qty, p_date: date, p_partner_id: partner, p_ref_no: ref, p_note: note }).then(function(res) {
       // セット自身の出庫行にシリアルを付ける（RPC はグループIDを返す）
-      if (res.error || !serial || !res.data) return res;
-      return sb.from('inv_transactions').update({ serial_no: serial }).eq('group_id', res.data).eq('product_id', p.id).then(function() { return res; });
+      if (res.error || !res.data) return res;
+      var upd = serial ? sb.from('inv_transactions').update({ serial_no: serial }).eq('group_id', res.data).eq('product_id', p.id) : Promise.resolve();
+      return upd.then(function() { return pendingPhotos.length ? sb.from('inv_transactions').select('id').eq('group_id', res.data).eq('product_id', p.id).limit(1).then(function(r) { return uploadPhotosFor(r.data && r.data[0] ? r.data[0].id : null); }) : null; }).then(function() { return res; });
     });
   } else {
     label = TYPE_LABEL[state.entryType];
     var pv = $('e-price').value !== '' ? Number($('e-price').value) : null;
     var price = state.entryType === 'in' ? pv : null, sprice = state.entryType === 'out' ? pv : null;
-    q = sb.from('inv_transactions').insert({ tx_date: date, type: state.entryType, product_id: p.id, partner_id: partner, qty: qty, ref_no: ref, note: note, unit_price: price, sales_price: sprice, serial_no: serial });
+    q = sb.from('inv_transactions').insert({ tx_date: date, type: state.entryType, product_id: p.id, partner_id: partner, qty: qty, ref_no: ref, note: note, unit_price: price, sales_price: sprice, serial_no: serial }).select('id').then(function(res) {
+      if (res.error || !pendingPhotos.length) return res;
+      return uploadPhotosFor(res.data && res.data[0] ? res.data[0].id : null).then(function() { return res; }).catch(function(e) { toast('登録はできましたが写真の保存に失敗: ' + (e.message || e)); return res; });
+    });
   }
   setBusy('entry-submit', true, '登録中...');
   q.then(function(res) {
@@ -681,7 +759,7 @@ $('entry-submit').addEventListener('click', function() {
     showMsg('entry-msg', '', '');
     toast(label + ' を登録しました：' + p.code + ' × ' + qty);
     // 連続登録しやすいよう 伝票番号・備考・取引先 は残す。数量は1に、単価は空（マスタ単価）に戻す
-    $('e-qty').value = 1; $('e-price').value = ''; $('e-serial').value = ''; showMsg('mic-msg', '', '');
+    $('e-qty').value = 1; $('e-price').value = ''; $('e-serial').value = ''; clearPendingPhotos(); showMsg('mic-msg', '', '');
     loadAll().then(updateProductInfo);
   });
 });
@@ -762,31 +840,34 @@ function txRow(t, cols) {
     product: '<td>' + esc(p.code) + '<span class="hide-sm muted"> ' + esc(p.name) + '</span></td>', code: '<td>' + esc(p.code) + '</td>', name: '<td class="hide-sm">' + esc(p.name) + '</td>',
     qty: '<td class="num"><strong>' + q + '</strong></td>', partner: '<td class="hide-sm">' + esc(pa ? pa.name : '') + '</td>', ref: '<td class="hide-sm">' + esc(t.ref_no) + '</td>',
     serial: '<td class="hide-sm" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(t.serial_no || '') + '">' + esc(t.serial_no || '') + '</td>',
+    photo: '<td>' + (t.photos && t.photos.length ? '<button class="btn sm" data-photo="' + t.id + '">📷' + t.photos.length + '</button>' : '') + '</td>',
     note: '<td class="hide-sm">' + esc(t.note) + '</td>', by: '<td class="hide-sm muted">' + esc((t.created_by || '').split('@')[0]) + '</td>',
     del: '<td><button class="btn sm danger" data-del="' + t.id + '">削除</button></td>'
   };
   return '<tr>' + cols.map(function(c) { return cells[c]; }).join('') + '</tr>';
 }
 function bindDelete(tb) {
+  tb.querySelectorAll('[data-photo]').forEach(function(b) { b.addEventListener('click', function() { var t = state.tx.find(function(x) { return x.id === +b.getAttribute('data-photo'); }); if (t) openPhotos(t); }); });
   tb.querySelectorAll('[data-del]').forEach(function(b) {
     b.addEventListener('click', function() {
       var id = +b.getAttribute('data-del'); var t = state.tx.find(function(x) { return x.id === id; }); var p = productById(t.product_id);
-      var q;
+      var q, photoPaths = [];
       if (t.group_id) {
         var grp = state.tx.filter(function(x) { return x.group_id === t.group_id; });
+        grp.forEach(function(x) { photoPaths = photoPaths.concat(x.photos || []); });
         if (!confirm('これは' + ORIGIN_LABEL[t.origin] + 'でまとめて登録された履歴です。関連する ' + grp.length + ' 件をすべて削除しますか？\n' + grp.map(function(x) { var pp = productById(x.product_id); return TYPE_LABEL[x.type] + ' ' + (pp ? pp.code : '') + ' × ' + x.qty; }).join('\n') + '\n（在庫数も戻ります）')) return;
         q = sb.from('inv_transactions').delete().eq('group_id', t.group_id);
       } else {
         if (!confirm('この履歴を削除しますか？\n' + fmtDate(t.tx_date) + ' ' + TYPE_LABEL[t.type] + ' ' + (p ? p.code : '') + ' × ' + t.qty + '\n（在庫数も戻ります）')) return;
-        q = sb.from('inv_transactions').delete().eq('id', id);
+        q = sb.from('inv_transactions').delete().eq('id', id); photoPaths = t.photos || [];
       }
-      q.then(function(res) { if (res.error) { toast('削除に失敗: ' + res.error.message); return; } toast('削除しました'); loadAll(); });
+      q.then(function(res) { if (res.error) { toast('削除に失敗: ' + res.error.message); return; } toast('削除しました'); deletePhotos(photoPaths); loadAll(); });
     });
   });
 }
 function renderRecent() {
   var tb = $('recent-table').querySelector('tbody');
-  tb.innerHTML = state.tx.slice(0, 15).map(function(t) { return txRow(t, ['date', 'type', 'product', 'qty', 'partner', 'by', 'del']); }).join('') || '<tr><td colspan="7" class="muted">まだ登録がありません。</td></tr>';
+  tb.innerHTML = state.tx.slice(0, 15).map(function(t) { return txRow(t, ['date', 'type', 'product', 'qty', 'partner', 'photo', 'by', 'del']); }).join('') || '<tr><td colspan="8" class="muted">まだ登録がありません。</td></tr>';
   bindDelete(tb);
 }
 
@@ -806,7 +887,7 @@ function filteredHistory() {
 function renderHistory() {
   var rows = filteredHistory();
   var tb = $('history-table').querySelector('tbody');
-  tb.innerHTML = rows.slice(0, 500).map(function(t) { return txRow(t, ['date', 'type', 'code', 'name', 'qty', 'partner', 'ref', 'serial', 'note', 'by', 'del']); }).join('') || '<tr><td colspan="11" class="muted">該当する履歴がありません。</td></tr>';
+  tb.innerHTML = rows.slice(0, 500).map(function(t) { return txRow(t, ['date', 'type', 'code', 'name', 'qty', 'partner', 'ref', 'serial', 'note', 'photo', 'by', 'del']); }).join('') || '<tr><td colspan="12" class="muted">該当する履歴がありません。</td></tr>';
   bindDelete(tb);
   var sumIn = rows.filter(function(t) { return t.type === 'in'; }).reduce(function(a, t) { return a + t.qty; }, 0), sumOut = rows.filter(function(t) { return t.type === 'out'; }).reduce(function(a, t) { return a + t.qty; }, 0);
   $('h-summary').textContent = rows.length + ' 件　入庫合計 ' + sumIn + '　出庫合計 ' + sumOut + (rows.length > 500 ? '　（最新500件を表示。Excel出力には全件含まれます）' : '');
@@ -919,7 +1000,7 @@ function sheetStock() {
   return state.stock.map(function(s) { var up = s.unit_price == null ? '' : Number(s.unit_price); return { '型番': s.code, '品名': s.name, '区分': PKIND_LABEL[s.kind] || '単品', 'カテゴリ': s.category, '在庫数': s.stock, '完成品に内包': s.contained || 0, '組立可能数': s.buildable == null ? '' : s.buildable, '単位': s.unit, '単価': up, '在庫金額': up === '' || s.kind === 'kit' ? '' : s.stock * up, '発注点': s.reorder_point, '状態': s.active ? '取扱中' : '廃番', '最終入出庫日': s.last_tx_date || '', '備考': s.note }; });
 }
 function sheetHistory(rows) {
-  return rows.map(function(t) { var p = productById(t.product_id) || {}, pa = partnerById(t.partner_id) || {}; var up = t.unit_price != null ? Number(t.unit_price) : (p.unit_price != null ? Number(p.unit_price) : ''); return { '日付': t.tx_date, '種別': TYPE_LABEL[t.type], '登録元': t.origin && t.origin !== 'manual' ? ORIGIN_LABEL[t.origin] : '', '型番': p.code || '', '品名': p.name || '', '数量': t.qty, '増減': signedQty(t), '仕入単価': up, '仕入金額': up === '' ? '' : Math.abs(t.qty) * up, '販売単価': t.sales_price != null ? Number(t.sales_price) : '', '売上金額': t.sales_price != null ? Math.abs(t.qty) * Number(t.sales_price) : '', '取引先': pa.name || '', '伝票番号': t.ref_no, 'シリアル': t.serial_no || '', '備考': t.note, '登録者': t.created_by, '登録日時': t.created_at, 'グループID': t.group_id || '' }; });
+  return rows.map(function(t) { var p = productById(t.product_id) || {}, pa = partnerById(t.partner_id) || {}; var up = t.unit_price != null ? Number(t.unit_price) : (p.unit_price != null ? Number(p.unit_price) : ''); return { '日付': t.tx_date, '種別': TYPE_LABEL[t.type], '登録元': t.origin && t.origin !== 'manual' ? ORIGIN_LABEL[t.origin] : '', '型番': p.code || '', '品名': p.name || '', '数量': t.qty, '増減': signedQty(t), '仕入単価': up, '仕入金額': up === '' ? '' : Math.abs(t.qty) * up, '販売単価': t.sales_price != null ? Number(t.sales_price) : '', '売上金額': t.sales_price != null ? Math.abs(t.qty) * Number(t.sales_price) : '', '取引先': pa.name || '', '伝票番号': t.ref_no, 'シリアル': t.serial_no || '', '備考': t.note, '写真枚数': (t.photos || []).length, '登録者': t.created_by, '登録日時': t.created_at, 'グループID': t.group_id || '' }; });
 }
 function sheetProducts() { return state.products.map(function(p) { return { '型番': p.code, '品名': p.name, '区分': PKIND_LABEL[p.kind] || '単品', 'カテゴリ': p.category, '単位': p.unit, '単価': p.unit_price == null ? '' : Number(p.unit_price), '発注点': p.reorder_point, '呼び名': p.yomi || '', '備考': p.note, '状態': p.active ? '取扱中' : '廃番' }; }); }
 function sheetBom() { return state.bom.map(function(b) { var p = productById(b.parent_id) || {}, c = productById(b.child_id) || {}; return { '親型番': p.code || '', '親品名': p.name || '', '子型番': c.code || '', '子品名': c.name || '', '数量': b.qty }; }); }
