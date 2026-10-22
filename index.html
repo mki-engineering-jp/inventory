@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>幹開発 在庫管理</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%231f5fa8'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3E在%3C/text%3E%3C/svg%3E">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #f3f5f8; --card: #ffffff; --text: #1d2733; --muted: #6b7684; --line: #dde3ea;
+    --primary: #1f5fa8; --primary-dark: #174a84; --in: #1c8a5a; --out: #c2410c; --adj: #6d28d9;
+    --warn-bg: #fff4e5; --warn: #b45309; --danger: #b91c1c; --radius: 12px;
+    --nav-h: 60px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; font-size: 15px; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--primary); }
+
+  /* ── header ── */
+  header { background: var(--primary); color: #fff; padding: 0 16px; height: 52px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 20; }
+  header .brand { font-weight: 700; font-size: 16px; letter-spacing: .02em; }
+  header .brand small { font-weight: 400; opacity: .85; margin-left: 8px; font-size: 12px; }
+  header .user { font-size: 12px; opacity: .9; display: flex; align-items: center; gap: 10px; }
+  header .user button { background: rgba(255,255,255,.18); border: 0; color: #fff; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+
+  /* ── tabs ── */
+  nav.tabs { display: flex; gap: 2px; background: #fff; border-bottom: 1px solid var(--line); padding: 0 8px; position: sticky; top: 52px; z-index: 19; overflow-x: auto; }
+  nav.tabs button { flex: 0 0 auto; background: none; border: 0; border-bottom: 3px solid transparent; padding: 12px 14px; cursor: pointer; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  nav.tabs button.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 16px 16px calc(var(--nav-h) + 24px); }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  .card h2 { margin: 0 0 12px; font-size: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .row > * { flex: 1 1 160px; }
+  .row > .fix { flex: 0 0 auto; }
+  label.f { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+  input[type=text], input[type=number], input[type=date], input[type=email], input[type=search], select, textarea {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; min-height: 44px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid rgba(31,95,168,.35); border-color: var(--primary); }
+  textarea { min-height: 70px; resize: vertical; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 16px; min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: #fff; cursor: pointer; font-weight: 600; }
+  .btn:hover { background: #f6f8fb; }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn.primary:hover { background: var(--primary-dark); }
+  .btn.danger { color: var(--danger); border-color: #f1c4c4; }
+  .btn.sm { padding: 6px 10px; min-height: 34px; font-size: 13px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.big { font-size: 17px; min-height: 54px; }
+
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; background: #fff; padding: 12px 6px; min-height: 52px; cursor: pointer; font-weight: 700; font-size: 16px; color: var(--muted); }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.active.in { background: var(--in); color: #fff; }
+  .seg button.active.out { background: var(--out); color: #fff; }
+  .seg button.active.adjust { background: var(--adj); color: #fff; }
+
+  .qty { display: flex; gap: 8px; align-items: stretch; }
+  .qty button { flex: 0 0 56px; font-size: 24px; border-radius: 10px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+  .qty input { text-align: center; font-size: 22px; font-weight: 700; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; background: #fafbfd; position: sticky; top: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.low td { background: var(--warn-bg); }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: #f3f7fc; }
+  .tbl-wrap { overflow: auto; max-height: 70vh; border: 1px solid var(--line); border-radius: 10px; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; }
+  .pill.in { background: var(--in); } .pill.out { background: var(--out); } .pill.adjust { background: var(--adj); }
+  .pill.gray { background: #9aa4b1; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .stock-big { font-size: 20px; font-weight: 800; }
+  .low-flag { color: var(--warn); font-weight: 700; font-size: 12px; margin-left: 6px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+  .stat .v { font-size: 24px; font-weight: 800; } .stat .k { font-size: 12px; color: var(--muted); }
+
+  .msg { padding: 10px 12px; border-radius: 10px; font-size: 14px; margin: 8px 0; display: none; }
+  .msg.ok { display: block; background: #e8f5ee; color: #166534; }
+  .msg.err { display: block; background: #fdecec; color: var(--danger); }
+  .msg.info { display: block; background: #e9f0fa; color: var(--primary-dark); }
+
+  .toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 16px); transform: translateX(-50%); background: #1d2733; color: #fff; padding: 12px 18px; border-radius: 10px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50; max-width: 90vw; }
+  .toast.show { opacity: 1; }
+
+  /* modal */
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: center; justify-content: center; z-index: 40; padding: 16px; }
+  .modal-bg.show { display: flex; }
+  .modal { background: #fff; border-radius: 14px; width: 100%; max-width: 520px; padding: 20px; max-height: 90vh; overflow: auto; }
+  .modal h3 { margin: 0 0 12px; }
+  .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+  /* login */
+  #login-view { max-width: 420px; margin: 40px auto; }
+  #login-view .logo { text-align: center; margin-bottom: 20px; }
+  #login-view .logo .mark { display: inline-block; width: 56px; height: 56px; border-radius: 14px; background: var(--primary); color: #fff; font-size: 28px; font-weight: 800; line-height: 56px; }
+
+  .hidden { display: none !important; }
+  code { background: #eef1f5; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .import-log { font-size: 13px; max-height: 240px; overflow: auto; background: #fafbfd; border: 1px solid var(--line); border-radius: 8px; padding: 10px; white-space: pre-wrap; }
+
+  @media (max-width: 640px) {
+    nav.tabs { position: fixed; top: auto; bottom: 0; left: 0; right: 0; border-top: 1px solid var(--line); border-bottom: 0; padding: 0; justify-content: space-around; height: var(--nav-h); padding-bottom: env(safe-area-inset-bottom); }
+    nav.tabs button { flex: 1 1 0; padding: 8px 2px; font-size: 11px; border-bottom: 0; border-top: 3px solid transparent; }
+    nav.tabs button.active { border-top-color: var(--primary); }
+    header .brand small { display: none; }
+    main { padding-top: 12px; }
+    .hide-sm { display: none; }
+    th, td { padding: 8px 6px; }
+  }
+  @media (min-width: 641px) { :root { --nav-h: 0px; } .only-sm { display: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">幹開発 在庫管理<small>社内専用</small></div>
+  <div class="user"><span id="user-email"></span><button id="logout-btn" class="hidden">ログアウト</button></div>
+</header>
+
+<!-- ───── ログイン ───── -->
+<div id="login-view">
+  <div class="card">
+    <div class="logo"><div class="mark">在</div><div style="margin-top:8px;font-weight:700">在庫管理システム</div><div class="muted">幹開発株式会社 社内専用</div></div>
+    <div id="step-email">
+      <label class="f">社内メールアドレス（@miki-kk.jp）</label>
+      <input type="email" id="email-input" placeholder="name@miki-kk.jp" autocomplete="email" inputmode="email">
+      <button id="send-code-btn" class="btn primary big" style="width:100%;margin-top:12px">認証コードを送信</button>
+    </div>
+    <div id="step-code" class="hidden">
+      <label class="f">メールで届いた6桁の認証コード</label>
+      <input type="text" id="code-input" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code" style="font-size:22px;letter-spacing:.3em;text-align:center">
+      <button id="verify-btn" class="btn primary big" style="width:100%;margin-top:12px">ログイン</button>
+      <button id="back-btn" class="btn" style="width:100%;margin-top:8px">メールアドレスを入力し直す</button>
+    </div>
+    <div id="login-msg" class="msg"></div>
+  </div>
+</div>
+
+<!-- ───── アプリ ───── -->
+<div id="app" class="hidden">
+<nav class="tabs">
+  <button data-view="stock" class="active">在庫一覧</button>
+  <button data-view="entry">入出庫登録</button>
+  <button data-view="history">履歴</button>
+  <button data-view="products">製品</button>
+  <button data-view="partners">取引先</button>
+  <button data-view="io">取込/出力</button>
+</nav>
+<main>
+
+  <!-- 在庫一覧 -->
+  <section id="view-stock" class="view active">
+    <div class="stats">
+      <div class="stat"><div class="v" id="st-products">–</div><div class="k">登録製品数</div></div>
+      <div class="stat"><div class="v" id="st-total">–</div><div class="k">総在庫数</div></div>
+      <div class="stat"><div class="v" id="st-low" style="color:var(--warn)">–</div><div class="k">発注点以下</div></div>
+      <div class="stat"><div class="v" id="st-today">–</div><div class="k">本日の入出庫件数</div></div>
+    </div>
+    <div class="card">
+      <div class="row" style="margin-bottom:10px">
+        <input type="search" id="stock-q" placeholder="型番・品名・カテゴリで検索">
+        <select id="stock-cat" class="fix" style="flex-basis:180px"><option value="">すべてのカテゴリ</option></select>
+        <label class="fix" style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px"><input type="checkbox" id="stock-lowonly"> 発注点以下のみ</label>
+        <label class="fix" style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px"><input type="checkbox" id="stock-inactive"> 廃番も表示</label>
+      </div>
+      <div class="tbl-wrap">
+        <table id="stock-table">
+          <thead><tr><th>型番</th><th>品名</th><th class="hide-sm">カテゴリ</th><th class="num">在庫</th><th class="num hide-sm">発注点</th><th class="hide-sm">最終入出庫</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="muted" style="margin-top:8px">行をタップすると、その製品の履歴を表示します。在庫数は入出庫履歴の積み上げで自動計算されます。</div>
+    </div>
+  </section>
+
+  <!-- 入出庫登録 -->
+  <section id="view-entry" class="view">
+    <div class="card">
+      <h2>入出庫を登録</h2>
+      <div class="seg" id="type-seg">
+        <button data-type="in" class="in active">入庫</button>
+        <button data-type="out" class="out">出庫</button>
+        <button data-type="adjust" class="adjust">棚卸調整</button>
+      </div>
+      <div style="margin-top:14px">
+        <label class="f">製品</label>
+        <input type="text" id="e-product" list="product-list" placeholder="型番または品名を入力して選択" autocomplete="off">
+        <datalist id="product-list"></datalist>
+        <div class="muted" id="e-product-info" style="margin-top:4px"></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label class="f" id="e-qty-label">数量</label>
+          <div class="qty">
+            <button type="button" id="qty-minus">−</button>
+            <input type="number" id="e-qty" value="1" inputmode="numeric">
+            <button type="button" id="qty-plus">＋</button>
+          </div>
+        </div>
+        <div>
+          <label class="f">日付</label>
+          <input type="date" id="e-date">
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label class="f" id="e-partner-label">取引先（入庫元）</label>
+          <select id="e-partner"><option value="">（なし）</option></select>
+        </div>
+        <div>
+          <label class="f">伝票番号・注文番号</label>
+          <input type="text" id="e-ref" placeholder="任意">
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <label class="f">備考</label>
+        <input type="text" id="e-note" placeholder="任意（例：初期在庫、不良品返却 など）">
+      </div>
+      <div id="entry-msg" class="msg"></div>
+      <button id="entry-submit" class="btn primary big" style="width:100%;margin-top:14px">登録する</button>
+    </div>
+    <div class="card">
+      <h2>最近の登録</h2>
+      <div class="tbl-wrap" style="max-height:40vh">
+        <table id="recent-table">
+          <thead><tr><th>日付</th><th>種別</th><th>製品</th><th class="num">数量</th><th class="hide-sm">取引先</th><th class="hide-sm">登録者</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 履歴 -->
+  <section id="view-history" class="view">
+    <div class="card">
+      <h2>入出庫履歴</h2>
+      <div class="row" style="margin-bottom:10px">
+        <input type="search" id="h-q" placeholder="型番・品名・取引先・伝票番号・備考で検索">
+        <select id="h-type" class="fix" style="flex-basis:130px"><option value="">すべて</option><option value="in">入庫</option><option value="out">出庫</option><option value="adjust">調整</option></select>
+        <input type="date" id="h-from" class="fix" style="flex-basis:160px" title="開始日">
+        <input type="date" id="h-to" class="fix" style="flex-basis:160px" title="終了日">
+        <button id="h-clear" class="btn fix">条件クリア</button>
+      </div>
+      <div class="muted" id="h-summary" style="margin-bottom:8px"></div>
+      <div class="tbl-wrap">
+        <table id="history-table">
+          <thead><tr><th>日付</th><th>種別</th><th>型番</th><th class="hide-sm">品名</th><th class="num">数量</th><th class="hide-sm">取引先</th><th class="hide-sm">伝票番号</th><th class="hide-sm">備考</th><th class="hide-sm">登録者</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 製品マスタ -->
+  <section id="view-products" class="view">
+    <div class="card">
+      <div class="row" style="margin-bottom:10px">
+        <h2 style="margin:0">製品マスタ</h2>
+        <button id="p-add" class="btn primary fix">＋ 製品を追加</button>
+      </div>
+      <div class="tbl-wrap">
+        <table id="products-table">
+          <thead><tr><th>型番</th><th>品名</th><th class="hide-sm">カテゴリ</th><th class="hide-sm">単位</th><th class="num">発注点</th><th class="hide-sm">備考</th><th>状態</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 取引先 -->
+  <section id="view-partners" class="view">
+    <div class="card">
+      <div class="row" style="margin-bottom:10px">
+        <h2 style="margin:0">取引先（出庫先・入庫元）</h2>
+        <button id="pa-add" class="btn primary fix">＋ 取引先を追加</button>
+      </div>
+      <div class="tbl-wrap">
+        <table id="partners-table">
+          <thead><tr><th>名称</th><th>区分</th><th class="hide-sm">備考</th><th class="num">出庫累計</th><th class="num">入庫累計</th><th>状態</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 取込/出力 -->
+  <section id="view-io" class="view">
+    <div class="card">
+      <h2>Excel 出力</h2>
+      <div class="row">
+        <button id="x-stock" class="btn">在庫一覧を出力 (.xlsx)</button>
+        <button id="x-history" class="btn">入出庫履歴を出力 (.xlsx)</button>
+        <button id="x-all" class="btn">すべて（在庫・履歴・製品・取引先）を出力</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>製品マスタの取込</h2>
+      <p class="muted" style="margin-top:0">列：<code>型番</code> <code>品名</code> <code>カテゴリ</code> <code>単位</code> <code>発注点</code> <code>備考</code>（1行目が見出し）。型番が既にあれば上書き、なければ追加します。</p>
+      <div class="row">
+        <button id="t-products" class="btn fix">テンプレートをダウンロード</button>
+        <input type="file" id="f-products" accept=".xlsx,.xls,.csv">
+      </div>
+      <div id="log-products" class="import-log hidden" style="margin-top:10px"></div>
+      <button id="run-products" class="btn primary hidden" style="margin-top:10px">この内容で取り込む</button>
+    </div>
+    <div class="card">
+      <h2>入出庫履歴の取込</h2>
+      <p class="muted" style="margin-top:0">列：<code>日付</code> <code>種別</code>（入庫/出庫/調整） <code>型番</code> <code>取引先</code> <code>数量</code> <code>伝票番号</code> <code>備考</code>。型番は製品マスタに登録済みのものだけ取り込みます。取引先が未登録なら自動で追加します。</p>
+      <div class="row">
+        <button id="t-tx" class="btn fix">テンプレートをダウンロード</button>
+        <input type="file" id="f-tx" accept=".xlsx,.xls,.csv">
+      </div>
+      <div id="log-tx" class="import-log hidden" style="margin-top:10px"></div>
+      <button id="run-tx" class="btn primary hidden" style="margin-top:10px">この内容で取り込む</button>
+    </div>
+  </section>
+</main>
+</div>
+
+<!-- 製品編集モーダル -->
+<div class="modal-bg" id="p-modal">
+  <div class="modal">
+    <h3 id="p-modal-title">製品を追加</h3>
+    <input type="hidden" id="p-id">
+    <div class="row">
+      <div><label class="f">型番 *</label><input type="text" id="p-code"></div>
+      <div><label class="f">品名 *</label><input type="text" id="p-name"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div><label class="f">カテゴリ</label><input type="text" id="p-cat" list="cat-list"><datalist id="cat-list"></datalist></div>
+      <div><label class="f">単位</label><input type="text" id="p-unit" value="台"></div>
+      <div><label class="f">発注点（これ以下で警告）</label><input type="number" id="p-reorder" value="0" min="0"></div>
+    </div>
+    <div style="margin-top:10px"><label class="f">備考</label><textarea id="p-note"></textarea></div>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="p-active" checked> 取扱中（チェックを外すと廃番扱い）</label>
+    <div id="p-msg" class="msg"></div>
+    <div class="actions"><button class="btn" id="p-cancel">キャンセル</button><button class="btn primary" id="p-save">保存</button></div>
+  </div>
+</div>
+
+<!-- 取引先編集モーダル -->
+<div class="modal-bg" id="pa-modal">
+  <div class="modal">
+    <h3 id="pa-modal-title">取引先を追加</h3>
+    <input type="hidden" id="pa-id">
+    <div><label class="f">名称 *</label><input type="text" id="pa-name"></div>
+    <div style="margin-top:10px"><label class="f">区分</label>
+      <select id="pa-kind"><option value="customer">出庫先（納品先）</option><option value="supplier">入庫元（仕入先・製造元）</option><option value="both" selected>両方</option></select></div>
+    <div style="margin-top:10px"><label class="f">備考</label><textarea id="pa-note"></textarea></div>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="pa-active" checked> 有効</label>
+    <div id="pa-msg" class="msg"></div>
+    <div class="actions"><button class="btn" id="pa-cancel">キャンセル</button><button class="btn primary" id="pa-save">保存</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ───────────────────────── 設定 ─────────────────────────
+var SUPABASE_URL = 'https://adatzeolzkjujtuxebrc.supabase.co';
+var SUPABASE_KEY = 'sb_publishable_2Ghe-V3dLS7Ym06p71i33A_zFU8eJgz'; // 公開用キー（データ保護はSupabase側のRLSで実施）
+var STAFF_DOMAIN = '@miki-kk.jp';
+
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+var $ = function(id) { return document.getElementById(id); };
+var state = { products: [], partners: [], stock: [], tx: [], user: null, entryType: 'in', pendingEmail: '' };
+var TYPE_LABEL = { in: '入庫', out: '出庫', adjust: '調整' };
+var KIND_LABEL = { customer: '出庫先', supplier: '入庫元', both: '両方' };
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function todayStr() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function fmtDate(s) { return s ? String(s).replace(/-/g, '/') : ''; }
+function toast(msg) { var t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._tm); t._tm = setTimeout(function() { t.classList.remove('show'); }, 2200); }
+function showMsg(id, text, kind) { var el = $(id); el.textContent = text || ''; el.className = 'msg' + (text ? ' ' + kind : ''); }
+function setBusy(id, busy, label) { var b = $(id); b.disabled = busy; if (label) b.textContent = label; }
+function signedQty(t) { return t.type === 'in' ? t.qty : t.type === 'out' ? -t.qty : t.qty; }
+function userShort() { return state.user ? state.user.email.split('@')[0] : ''; }
+
+// ───────────────────────── 認証 ─────────────────────────
+sb.auth.getSession().then(function(res) { if (res.data.session) enter(res.data.session); });
+
+$('send-code-btn').addEventListener('click', sendCode);
+$('email-input').addEventListener('keydown', function(e) { if (e.key === 'Enter') sendCode(); });
+function sendCode() {
+  var email = $('email-input').value.trim().toLowerCase();
+  if (!email || email.indexOf('@') < 1) { showMsg('login-msg', 'メールアドレスを入力してください。', 'err'); return; }
+  if (!email.endsWith(STAFF_DOMAIN)) { showMsg('login-msg', 'このシステムは ' + STAFF_DOMAIN + ' のメールアドレスでのみ利用できます。', 'err'); return; }
+  setBusy('send-code-btn', true, '送信中...');
+  sb.auth.signInWithOtp({ email: email, options: { shouldCreateUser: true } }).then(function(res) {
+    setBusy('send-code-btn', false, '認証コードを送信');
+    if (res.error) { showMsg('login-msg', 'コードの送信に失敗しました。時間をおいて再度お試しください。', 'err'); return; }
+    state.pendingEmail = email;
+    $('step-email').classList.add('hidden'); $('step-code').classList.remove('hidden');
+    showMsg('login-msg', email + ' 宛に6桁の認証コードを送信しました。', 'info');
+    $('code-input').focus();
+  });
+}
+$('verify-btn').addEventListener('click', verifyCode);
+$('code-input').addEventListener('keydown', function(e) { if (e.key === 'Enter') verifyCode(); });
+$('back-btn').addEventListener('click', function() { $('step-code').classList.add('hidden'); $('step-email').classList.remove('hidden'); showMsg('login-msg', '', ''); });
+function verifyCode() {
+  var token = $('code-input').value.trim();
+  if (token.length !== 6) { showMsg('login-msg', '6桁のコードを入力してください。', 'err'); return; }
+  setBusy('verify-btn', true, '確認中...');
+  sb.auth.verifyOtp({ email: state.pendingEmail, token: token, type: 'email' }).then(function(res) {
+    setBusy('verify-btn', false, 'ログイン');
+    if (res.error) { showMsg('login-msg', 'コードが正しくないか、有効期限が切れています。', 'err'); return; }
+    enter(res.data.session);
+  });
+}
+$('logout-btn').addEventListener('click', function() { sb.auth.signOut().then(function() { location.reload(); }); });
+
+function enter(session) {
+  var email = (session.user.email || '').toLowerCase();
+  if (!email.endsWith(STAFF_DOMAIN)) {
+    sb.auth.signOut().then(function() { showMsg('login-msg', '社内アカウント以外ではご利用になれません。', 'err'); });
+    return;
+  }
+  state.user = { email: email };
+  $('user-email').textContent = email;
+  $('logout-btn').classList.remove('hidden');
+  $('login-view').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  $('e-date').value = todayStr();
+  loadAll();
+}
+
+// ───────────────────────── データ読込 ─────────────────────────
+function loadAll() {
+  return Promise.all([
+    sb.from('inv_products').select('*').order('code'),
+    sb.from('inv_partners').select('*').order('name'),
+    sb.from('inv_stock').select('*').order('code'),
+    sb.from('inv_transactions').select('*').order('tx_date', { ascending: false }).order('id', { ascending: false }).limit(5000)
+  ]).then(function(r) {
+    var err = r.find(function(x) { return x.error; });
+    if (err) { toast('読み込みエラー: ' + err.error.message); console.error(err.error); return; }
+    state.products = r[0].data; state.partners = r[1].data; state.stock = r[2].data; state.tx = r[3].data;
+    renderAll();
+  });
+}
+function renderAll() { renderStock(); renderEntryLists(); renderRecent(); renderHistory(); renderProducts(); renderPartners(); }
+function productById(id) { return state.products.find(function(p) { return p.id === id; }); }
+function partnerById(id) { return state.partners.find(function(p) { return p.id === id; }); }
+function stockOf(id) { var s = state.stock.find(function(x) { return x.id === id; }); return s ? s.stock : 0; }
+
+// ───────────────────────── タブ ─────────────────────────
+document.querySelectorAll('nav.tabs button').forEach(function(b) {
+  b.addEventListener('click', function() { switchView(b.getAttribute('data-view')); });
+});
+function switchView(name) {
+  document.querySelectorAll('nav.tabs button').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-view') === name); });
+  document.querySelectorAll('.view').forEach(function(v) { v.classList.toggle('active', v.id === 'view-' + name); });
+  window.scrollTo(0, 0);
+}
+
+// ───────────────────────── 在庫一覧 ─────────────────────────
+['stock-q', 'stock-cat', 'stock-lowonly', 'stock-inactive'].forEach(function(id) { $(id).addEventListener('input', renderStock); $(id).addEventListener('change', renderStock); });
+function renderStock() {
+  var q = $('stock-q').value.trim().toLowerCase(), cat = $('stock-cat').value, lowOnly = $('stock-lowonly').checked, showInactive = $('stock-inactive').checked;
+  var cats = {}; state.products.forEach(function(p) { if (p.category) cats[p.category] = 1; });
+  var sel = $('stock-cat'); var cur = sel.value; sel.innerHTML = '<option value="">すべてのカテゴリ</option>' + Object.keys(cats).sort().map(function(c) { return '<option' + (c === cur ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
+  var rows = state.stock.filter(function(s) {
+    if (!showInactive && !s.active) return false;
+    if (cat && s.category !== cat) return false;
+    if (lowOnly && !(s.stock <= s.reorder_point)) return false;
+    if (q && (s.code + ' ' + s.name + ' ' + s.category).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+  var tb = $('stock-table').querySelector('tbody');
+  tb.innerHTML = rows.length ? rows.map(function(s) {
+    var low = s.active && s.stock <= s.reorder_point;
+    return '<tr class="clickable' + (low ? ' low' : '') + '" data-id="' + s.id + '">' +
+      '<td><strong>' + esc(s.code) + '</strong>' + (s.active ? '' : ' <span class="pill gray">廃番</span>') + '</td>' +
+      '<td>' + esc(s.name) + '</td><td class="hide-sm">' + esc(s.category) + '</td>' +
+      '<td class="num"><span class="stock-big">' + s.stock + '</span> <span class="muted">' + esc(s.unit) + '</span>' + (low ? '<span class="low-flag">要発注</span>' : '') + '</td>' +
+      '<td class="num hide-sm">' + s.reorder_point + '</td><td class="hide-sm">' + fmtDate(s.last_tx_date) + '</td>' +
+      '<td><button class="btn sm" data-entry="' + s.id + '">入出庫</button></td></tr>';
+  }).join('') : '<tr><td colspan="7" class="muted">製品が登録されていません。「製品」タブから追加するか、「取込/出力」から一括登録してください。</td></tr>';
+  tb.querySelectorAll('tr.clickable').forEach(function(tr) {
+    tr.addEventListener('click', function(e) {
+      if (e.target.getAttribute('data-entry')) { var p = productById(+e.target.getAttribute('data-entry')); $('e-product').value = p.code + ' ' + p.name; updateProductInfo(); switchView('entry'); $('e-qty').focus(); return; }
+      var p2 = productById(+tr.getAttribute('data-id')); $('h-q').value = p2.code; $('h-type').value = ''; renderHistory(); switchView('history');
+    });
+  });
+  var active = state.stock.filter(function(s) { return s.active; });
+  $('st-products').textContent = active.length;
+  $('st-total').textContent = active.reduce(function(a, s) { return a + s.stock; }, 0);
+  $('st-low').textContent = active.filter(function(s) { return s.stock <= s.reorder_point; }).length;
+  var t = todayStr(); $('st-today').textContent = state.tx.filter(function(x) { return x.tx_date === t; }).length;
+}
+
+// ───────────────────────── 入出庫登録 ─────────────────────────
+$('type-seg').querySelectorAll('button').forEach(function(b) {
+  b.addEventListener('click', function() { setEntryType(b.getAttribute('data-type')); });
+});
+function setEntryType(t) {
+  state.entryType = t;
+  $('type-seg').querySelectorAll('button').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-type') === t); });
+  $('e-partner-label').textContent = t === 'in' ? '取引先（入庫元）' : t === 'out' ? '取引先（出庫先）' : '取引先（任意）';
+  $('e-qty-label').textContent = t === 'adjust' ? '増減数（減らす場合はマイナス、棚卸で合わせる）' : '数量';
+  renderEntryLists();
+}
+function renderEntryLists() {
+  var active = state.products.filter(function(p) { return p.active; });
+  $('product-list').innerHTML = active.map(function(p) { return '<option value="' + esc(p.code + ' ' + p.name) + '">'; }).join('');
+  var kinds = state.entryType === 'in' ? ['supplier', 'both'] : state.entryType === 'out' ? ['customer', 'both'] : ['customer', 'supplier', 'both'];
+  var cur = $('e-partner').value;
+  $('e-partner').innerHTML = '<option value="">（なし）</option>' + state.partners.filter(function(p) { return p.active && kinds.indexOf(p.kind) >= 0; }).map(function(p) { return '<option value="' + p.id + '"' + (String(p.id) === cur ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('');
+  $('cat-list').innerHTML = Object.keys(state.products.reduce(function(a, p) { if (p.category) a[p.category] = 1; return a; }, {})).map(function(c) { return '<option value="' + esc(c) + '">'; }).join('');
+}
+function resolveProduct(text) {
+  var t = (text || '').trim().toLowerCase(); if (!t) return null;
+  var code = t.split(' ')[0];
+  return state.products.find(function(p) { return (p.code + ' ' + p.name).toLowerCase() === t; }) ||
+         state.products.find(function(p) { return p.code.toLowerCase() === code; }) ||
+         state.products.find(function(p) { return p.code.toLowerCase() === t || p.name.toLowerCase() === t; }) || null;
+}
+$('e-product').addEventListener('input', updateProductInfo);
+$('e-product').addEventListener('change', updateProductInfo);
+function updateProductInfo() {
+  var p = resolveProduct($('e-product').value);
+  $('e-product-info').textContent = p ? ('現在庫: ' + stockOf(p.id) + ' ' + p.unit + (p.category ? '　カテゴリ: ' + p.category : '') + (p.active ? '' : '　※廃番')) : '';
+}
+$('qty-minus').addEventListener('click', function() { var v = parseInt($('e-qty').value || '0', 10) - 1; if (state.entryType !== 'adjust' && v < 1) v = 1; $('e-qty').value = v; });
+$('qty-plus').addEventListener('click', function() { $('e-qty').value = parseInt($('e-qty').value || '0', 10) + 1; });
+
+$('entry-submit').addEventListener('click', function() {
+  var p = resolveProduct($('e-product').value);
+  if (!p) { showMsg('entry-msg', '製品を一覧から選択してください。', 'err'); return; }
+  var qty = parseInt($('e-qty').value, 10);
+  if (isNaN(qty) || (state.entryType !== 'adjust' && qty < 1) || (state.entryType === 'adjust' && qty === 0)) { showMsg('entry-msg', '数量を正しく入力してください。', 'err'); return; }
+  if (state.entryType === 'out' && stockOf(p.id) - qty < 0) {
+    if (!confirm('現在庫（' + stockOf(p.id) + '）を超える出庫です。在庫がマイナスになりますが登録しますか？')) return;
+  }
+  var rec = { tx_date: $('e-date').value || todayStr(), type: state.entryType, product_id: p.id, partner_id: $('e-partner').value ? +$('e-partner').value : null, qty: qty, ref_no: $('e-ref').value.trim(), note: $('e-note').value.trim() };
+  setBusy('entry-submit', true, '登録中...');
+  sb.from('inv_transactions').insert(rec).then(function(res) {
+    setBusy('entry-submit', false, '登録する');
+    if (res.error) { showMsg('entry-msg', '登録に失敗しました: ' + res.error.message, 'err'); return; }
+    showMsg('entry-msg', '', '');
+    toast(TYPE_LABEL[rec.type] + ' を登録しました：' + p.code + ' × ' + qty);
+    $('e-qty').value = 1; $('e-ref').value = ''; $('e-note').value = '';
+    loadAll().then(updateProductInfo);
+  });
+});
+
+function txRow(t, cols) {
+  var p = productById(t.product_id) || { code: '?', name: '', unit: '' }, pa = partnerById(t.partner_id);
+  var q = (t.type === 'in' ? '+' : t.type === 'out' ? '−' : (t.qty > 0 ? '+' : '−')) + Math.abs(t.qty);
+  var cells = {
+    date: '<td>' + fmtDate(t.tx_date) + '</td>', type: '<td><span class="pill ' + t.type + '">' + TYPE_LABEL[t.type] + '</span></td>',
+    product: '<td>' + esc(p.code) + '<span class="hide-sm muted"> ' + esc(p.name) + '</span></td>', code: '<td>' + esc(p.code) + '</td>', name: '<td class="hide-sm">' + esc(p.name) + '</td>',
+    qty: '<td class="num"><strong>' + q + '</strong></td>', partner: '<td class="hide-sm">' + esc(pa ? pa.name : '') + '</td>', ref: '<td class="hide-sm">' + esc(t.ref_no) + '</td>',
+    note: '<td class="hide-sm">' + esc(t.note) + '</td>', by: '<td class="hide-sm muted">' + esc((t.created_by || '').split('@')[0]) + '</td>',
+    del: '<td><button class="btn sm danger" data-del="' + t.id + '">削除</button></td>'
+  };
+  return '<tr>' + cols.map(function(c) { return cells[c]; }).join('') + '</tr>';
+}
+function bindDelete(tb) {
+  tb.querySelectorAll('[data-del]').forEach(function(b) {
+    b.addEventListener('click', function() {
+      var id = +b.getAttribute('data-del'); var t = state.tx.find(function(x) { return x.id === id; }); var p = productById(t.product_id);
+      if (!confirm('この履歴を削除しますか？\n' + fmtDate(t.tx_date) + ' ' + TYPE_LABEL[t.type] + ' ' + (p ? p.code : '') + ' × ' + t.qty + '\n（在庫数も戻ります）')) return;
+      sb.from('inv_transactions').delete().eq('id', id).then(function(res) { if (res.error) { toast('削除に失敗: ' + res.error.message); return; } toast('削除しました'); loadAll(); });
+    });
+  });
+}
+function renderRecent() {
+  var tb = $('recent-table').querySelector('tbody');
+  tb.innerHTML = state.tx.slice(0, 15).map(function(t) { return txRow(t, ['date', 'type', 'product', 'qty', 'partner', 'by', 'del']); }).join('') || '<tr><td colspan="7" class="muted">まだ登録がありません。</td></tr>';
+  bindDelete(tb);
+}
+
+// ───────────────────────── 履歴 ─────────────────────────
+['h-q', 'h-type', 'h-from', 'h-to'].forEach(function(id) { $(id).addEventListener('input', renderHistory); $(id).addEventListener('change', renderHistory); });
+$('h-clear').addEventListener('click', function() { $('h-q').value = ''; $('h-type').value = ''; $('h-from').value = ''; $('h-to').value = ''; renderHistory(); });
+function filteredHistory() {
+  var q = $('h-q').value.trim().toLowerCase(), type = $('h-type').value, from = $('h-from').value, to = $('h-to').value;
+  return state.tx.filter(function(t) {
+    if (type && t.type !== type) return false;
+    if (from && t.tx_date < from) return false;
+    if (to && t.tx_date > to) return false;
+    if (q) { var p = productById(t.product_id) || {}, pa = partnerById(t.partner_id) || {}; var hay = [p.code, p.name, pa.name, t.ref_no, t.note, t.created_by].join(' ').toLowerCase(); if (hay.indexOf(q) < 0) return false; }
+    return true;
+  });
+}
+function renderHistory() {
+  var rows = filteredHistory();
+  var tb = $('history-table').querySelector('tbody');
+  tb.innerHTML = rows.slice(0, 500).map(function(t) { return txRow(t, ['date', 'type', 'code', 'name', 'qty', 'partner', 'ref', 'note', 'by', 'del']); }).join('') || '<tr><td colspan="10" class="muted">該当する履歴がありません。</td></tr>';
+  bindDelete(tb);
+  var sumIn = rows.filter(function(t) { return t.type === 'in'; }).reduce(function(a, t) { return a + t.qty; }, 0), sumOut = rows.filter(function(t) { return t.type === 'out'; }).reduce(function(a, t) { return a + t.qty; }, 0);
+  $('h-summary').textContent = rows.length + ' 件　入庫合計 ' + sumIn + '　出庫合計 ' + sumOut + (rows.length > 500 ? '　（最新500件を表示。Excel出力には全件含まれます）' : '');
+}
+
+// ───────────────────────── 製品マスタ ─────────────────────────
+function renderProducts() {
+  var tb = $('products-table').querySelector('tbody');
+  tb.innerHTML = state.products.map(function(p) {
+    return '<tr><td><strong>' + esc(p.code) + '</strong></td><td>' + esc(p.name) + '</td><td class="hide-sm">' + esc(p.category) + '</td><td class="hide-sm">' + esc(p.unit) + '</td><td class="num">' + p.reorder_point + '</td><td class="hide-sm muted">' + esc(p.note) + '</td>' +
+      '<td>' + (p.active ? '<span class="pill in">取扱中</span>' : '<span class="pill gray">廃番</span>') + '</td><td><button class="btn sm" data-edit="' + p.id + '">編集</button></td></tr>';
+  }).join('') || '<tr><td colspan="8" class="muted">製品が登録されていません。</td></tr>';
+  tb.querySelectorAll('[data-edit]').forEach(function(b) { b.addEventListener('click', function() { openProduct(productById(+b.getAttribute('data-edit'))); }); });
+}
+$('p-add').addEventListener('click', function() { openProduct(null); });
+$('p-cancel').addEventListener('click', function() { $('p-modal').classList.remove('show'); });
+function openProduct(p) {
+  $('p-modal-title').textContent = p ? '製品を編集' : '製品を追加';
+  $('p-id').value = p ? p.id : ''; $('p-code').value = p ? p.code : ''; $('p-name').value = p ? p.name : ''; $('p-cat').value = p ? p.category : '';
+  $('p-unit').value = p ? p.unit : '台'; $('p-reorder').value = p ? p.reorder_point : 0; $('p-note').value = p ? p.note : ''; $('p-active').checked = p ? p.active : true;
+  showMsg('p-msg', '', ''); $('p-modal').classList.add('show'); $('p-code').focus();
+}
+$('p-save').addEventListener('click', function() {
+  var rec = { code: $('p-code').value.trim(), name: $('p-name').value.trim(), category: $('p-cat').value.trim(), unit: $('p-unit').value.trim() || '台', reorder_point: parseInt($('p-reorder').value, 10) || 0, note: $('p-note').value.trim(), active: $('p-active').checked };
+  if (!rec.code || !rec.name) { showMsg('p-msg', '型番と品名は必須です。', 'err'); return; }
+  var id = $('p-id').value;
+  var q = id ? sb.from('inv_products').update(rec).eq('id', +id) : sb.from('inv_products').insert(rec);
+  setBusy('p-save', true, '保存中...');
+  q.then(function(res) {
+    setBusy('p-save', false, '保存');
+    if (res.error) { showMsg('p-msg', res.error.code === '23505' ? 'この型番は既に登録されています。' : '保存に失敗: ' + res.error.message, 'err'); return; }
+    $('p-modal').classList.remove('show'); toast('保存しました'); loadAll();
+  });
+});
+
+// ───────────────────────── 取引先 ─────────────────────────
+function renderPartners() {
+  var tb = $('partners-table').querySelector('tbody');
+  tb.innerHTML = state.partners.map(function(pa) {
+    var out = state.tx.filter(function(t) { return t.partner_id === pa.id && t.type === 'out'; }).reduce(function(a, t) { return a + t.qty; }, 0);
+    var inn = state.tx.filter(function(t) { return t.partner_id === pa.id && t.type === 'in'; }).reduce(function(a, t) { return a + t.qty; }, 0);
+    return '<tr><td><strong>' + esc(pa.name) + '</strong></td><td>' + KIND_LABEL[pa.kind] + '</td><td class="hide-sm muted">' + esc(pa.note) + '</td><td class="num">' + out + '</td><td class="num">' + inn + '</td>' +
+      '<td>' + (pa.active ? '<span class="pill in">有効</span>' : '<span class="pill gray">無効</span>') + '</td><td><button class="btn sm" data-edit="' + pa.id + '">編集</button></td></tr>';
+  }).join('') || '<tr><td colspan="7" class="muted">取引先が登録されていません。</td></tr>';
+  tb.querySelectorAll('[data-edit]').forEach(function(b) { b.addEventListener('click', function() { openPartner(partnerById(+b.getAttribute('data-edit'))); }); });
+}
+$('pa-add').addEventListener('click', function() { openPartner(null); });
+$('pa-cancel').addEventListener('click', function() { $('pa-modal').classList.remove('show'); });
+function openPartner(pa) {
+  $('pa-modal-title').textContent = pa ? '取引先を編集' : '取引先を追加';
+  $('pa-id').value = pa ? pa.id : ''; $('pa-name').value = pa ? pa.name : ''; $('pa-kind').value = pa ? pa.kind : 'both'; $('pa-note').value = pa ? pa.note : ''; $('pa-active').checked = pa ? pa.active : true;
+  showMsg('pa-msg', '', ''); $('pa-modal').classList.add('show'); $('pa-name').focus();
+}
+$('pa-save').addEventListener('click', function() {
+  var rec = { name: $('pa-name').value.trim(), kind: $('pa-kind').value, note: $('pa-note').value.trim(), active: $('pa-active').checked };
+  if (!rec.name) { showMsg('pa-msg', '名称は必須です。', 'err'); return; }
+  var id = $('pa-id').value;
+  var q = id ? sb.from('inv_partners').update(rec).eq('id', +id) : sb.from('inv_partners').insert(rec);
+  setBusy('pa-save', true, '保存中...');
+  q.then(function(res) {
+    setBusy('pa-save', false, '保存');
+    if (res.error) { showMsg('pa-msg', res.error.code === '23505' ? 'この名称は既に登録されています。' : '保存に失敗: ' + res.error.message, 'err'); return; }
+    $('pa-modal').classList.remove('show'); toast('保存しました'); loadAll();
+  });
+});
+
+// ───────────────────────── Excel 出力 ─────────────────────────
+function sheetStock() {
+  return state.stock.map(function(s) { return { '型番': s.code, '品名': s.name, 'カテゴリ': s.category, '在庫数': s.stock, '単位': s.unit, '発注点': s.reorder_point, '状態': s.active ? '取扱中' : '廃番', '最終入出庫日': s.last_tx_date || '', '備考': s.note }; });
+}
+function sheetHistory(rows) {
+  return rows.map(function(t) { var p = productById(t.product_id) || {}, pa = partnerById(t.partner_id) || {}; return { '日付': t.tx_date, '種別': TYPE_LABEL[t.type], '型番': p.code || '', '品名': p.name || '', '数量': t.qty, '増減': signedQty(t), '取引先': pa.name || '', '伝票番号': t.ref_no, '備考': t.note, '登録者': t.created_by, '登録日時': t.created_at }; });
+}
+function sheetProducts() { return state.products.map(function(p) { return { '型番': p.code, '品名': p.name, 'カテゴリ': p.category, '単位': p.unit, '発注点': p.reorder_point, '備考': p.note, '状態': p.active ? '取扱中' : '廃番' }; }); }
+function sheetPartners() { return state.partners.map(function(p) { return { '名称': p.name, '区分': KIND_LABEL[p.kind], '備考': p.note, '状態': p.active ? '有効' : '無効' }; }); }
+function download(wb, name) { XLSX.writeFile(wb, name + '_' + todayStr().replace(/-/g, '') + '.xlsx'); }
+function wbOf(sheets) { var wb = XLSX.utils.book_new(); sheets.forEach(function(s) { XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s.rows.length ? s.rows : [{}]), s.name); }); return wb; }
+$('x-stock').addEventListener('click', function() { download(wbOf([{ name: '在庫一覧', rows: sheetStock() }]), '在庫一覧'); });
+$('x-history').addEventListener('click', function() { download(wbOf([{ name: '入出庫履歴', rows: sheetHistory(filteredHistory()) }]), '入出庫履歴'); });
+$('x-all').addEventListener('click', function() { download(wbOf([{ name: '在庫一覧', rows: sheetStock() }, { name: '入出庫履歴', rows: sheetHistory(state.tx) }, { name: '製品マスタ', rows: sheetProducts() }, { name: '取引先', rows: sheetPartners() }]), '幹開発_在庫データ'); });
+$('t-products').addEventListener('click', function() { download(wbOf([{ name: '製品マスタ', rows: [{ '型番': 'SSW-1121', '品名': 'VEXA ヘッドセット', 'カテゴリ': 'VEXA', '単位': '台', '発注点': 10, '備考': '' }] }]), '製品マスタ_テンプレート'); });
+$('t-tx').addEventListener('click', function() { download(wbOf([{ name: '入出庫', rows: [{ '日付': todayStr(), '種別': '入庫', '型番': 'SSW-1121', '取引先': '', '数量': 10, '伝票番号': '', '備考': '初期在庫' }] }]), '入出庫_テンプレート'); });
+
+// ───────────────────────── Excel 取込 ─────────────────────────
+function readSheet(file) {
+  return new Promise(function(resolve, reject) {
+    var fr = new FileReader();
+    fr.onload = function(e) { try { var wb = XLSX.read(e.target.result, { type: 'array', cellDates: true }); var ws = wb.Sheets[wb.SheetNames[0]]; resolve(XLSX.utils.sheet_to_json(ws, { defval: '' })); } catch (err) { reject(err); } };
+    fr.onerror = reject; fr.readAsArrayBuffer(file);
+  });
+}
+function cell(r, keys) { for (var i = 0; i < keys.length; i++) { if (r[keys[i]] !== undefined && r[keys[i]] !== '') return r[keys[i]]; } return ''; }
+function toDateStr(v) {
+  if (v instanceof Date) return v.getFullYear() + '-' + String(v.getMonth() + 1).padStart(2, '0') + '-' + String(v.getDate()).padStart(2, '0');
+  var s = String(v).trim().replace(/\./g, '/').replace(/-/g, '/'); var m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/); if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+  if (typeof v === 'number') { var d = new Date(Math.round((v - 25569) * 86400 * 1000)); return toDateStr(d); }
+  return '';
+}
+var pendingProducts = null, pendingTx = null;
+$('f-products').addEventListener('change', function() {
+  var f = this.files[0]; if (!f) return;
+  readSheet(f).then(function(rows) {
+    var recs = [], log = [];
+    rows.forEach(function(r, i) {
+      var code = String(cell(r, ['型番', 'code', 'Code'])).trim(), name = String(cell(r, ['品名', '製品名', 'name'])).trim();
+      if (!code) { log.push('行' + (i + 2) + ': 型番が空のためスキップ'); return; }
+      if (!name) { log.push('行' + (i + 2) + ': 品名が空のためスキップ (' + code + ')'); return; }
+      recs.push({ code: code, name: name, category: String(cell(r, ['カテゴリ', 'category'])).trim(), unit: String(cell(r, ['単位', 'unit'])).trim() || '台', reorder_point: parseInt(cell(r, ['発注点', 'reorder_point']), 10) || 0, note: String(cell(r, ['備考', 'note'])).trim(), active: true });
+    });
+    var existing = recs.filter(function(r) { return state.products.some(function(p) { return p.code === r.code; }); }).length;
+    log.unshift('読み取り: ' + rows.length + ' 行 → 取込対象 ' + recs.length + ' 件（新規 ' + (recs.length - existing) + '、上書き ' + existing + '）');
+    $('log-products').textContent = log.join('\n'); $('log-products').classList.remove('hidden');
+    pendingProducts = recs; $('run-products').classList.toggle('hidden', !recs.length);
+  }).catch(function(e) { $('log-products').textContent = '読み込みエラー: ' + e.message; $('log-products').classList.remove('hidden'); });
+});
+$('run-products').addEventListener('click', function() {
+  if (!pendingProducts) return; setBusy('run-products', true, '取込中...');
+  sb.from('inv_products').upsert(pendingProducts, { onConflict: 'code' }).then(function(res) {
+    setBusy('run-products', false, 'この内容で取り込む');
+    if (res.error) { $('log-products').textContent += '\n失敗: ' + res.error.message; return; }
+    toast(pendingProducts.length + ' 件の製品を取り込みました'); pendingProducts = null; $('run-products').classList.add('hidden'); $('f-products').value = ''; loadAll();
+  });
+});
+$('f-tx').addEventListener('change', function() {
+  var f = this.files[0]; if (!f) return;
+  readSheet(f).then(function(rows) {
+    var recs = [], log = [], newPartners = {};
+    rows.forEach(function(r, i) {
+      var ln = '行' + (i + 2) + ': ';
+      var date = toDateStr(cell(r, ['日付', 'date'])); if (!date) { log.push(ln + '日付が不正のためスキップ'); return; }
+      var ts = String(cell(r, ['種別', 'type'])).trim(); var type = /入/.test(ts) || ts === 'in' ? 'in' : /出/.test(ts) || ts === 'out' ? 'out' : /調|棚/.test(ts) || ts === 'adjust' ? 'adjust' : '';
+      if (!type) { log.push(ln + '種別が不明（入庫/出庫/調整）のためスキップ'); return; }
+      var code = String(cell(r, ['型番', 'code'])).trim(); var p = state.products.find(function(x) { return x.code.toLowerCase() === code.toLowerCase(); });
+      if (!p) { log.push(ln + '型番「' + code + '」が製品マスタにないためスキップ'); return; }
+      var qty = parseInt(cell(r, ['数量', 'qty']), 10); if (isNaN(qty) || (type !== 'adjust' && qty <= 0) || qty === 0) { log.push(ln + '数量が不正のためスキップ'); return; }
+      var pname = String(cell(r, ['取引先', 'partner'])).trim();
+      if (pname && !state.partners.some(function(x) { return x.name === pname; })) newPartners[pname] = 1;
+      recs.push({ tx_date: date, type: type, product_code: p.code, product_id: p.id, partner_name: pname, qty: qty, ref_no: String(cell(r, ['伝票番号', 'ref_no'])).trim(), note: String(cell(r, ['備考', 'note'])).trim() });
+    });
+    var np = Object.keys(newPartners);
+    log.unshift('読み取り: ' + rows.length + ' 行 → 取込対象 ' + recs.length + ' 件' + (np.length ? '　新規取引先を自動追加: ' + np.join('、') : ''));
+    $('log-tx').textContent = log.join('\n'); $('log-tx').classList.remove('hidden');
+    pendingTx = { recs: recs, newPartners: np }; $('run-tx').classList.toggle('hidden', !recs.length);
+  }).catch(function(e) { $('log-tx').textContent = '読み込みエラー: ' + e.message; $('log-tx').classList.remove('hidden'); });
+});
+$('run-tx').addEventListener('click', function() {
+  if (!pendingTx) return; setBusy('run-tx', true, '取込中...');
+  var step = pendingTx.newPartners.length ? sb.from('inv_partners').insert(pendingTx.newPartners.map(function(n) { return { name: n, kind: 'both' }; })) : Promise.resolve({});
+  step.then(function(r0) {
+    if (r0.error) throw r0.error;
+    return sb.from('inv_partners').select('*');
+  }).then(function(r1) {
+    if (r1.error) throw r1.error;
+    var byName = {}; r1.data.forEach(function(p) { byName[p.name] = p.id; });
+    var rows = pendingTx.recs.map(function(r) { return { tx_date: r.tx_date, type: r.type, product_id: r.product_id, partner_id: r.partner_name ? (byName[r.partner_name] || null) : null, qty: r.qty, ref_no: r.ref_no, note: r.note }; });
+    return sb.from('inv_transactions').insert(rows);
+  }).then(function(r2) {
+    setBusy('run-tx', false, 'この内容で取り込む');
+    if (r2.error) throw r2.error;
+    toast(pendingTx.recs.length + ' 件の履歴を取り込みました'); pendingTx = null; $('run-tx').classList.add('hidden'); $('f-tx').value = ''; loadAll();
+  }).catch(function(e) { setBusy('run-tx', false, 'この内容で取り込む'); $('log-tx').textContent += '\n失敗: ' + (e.message || e); });
+});
+</script>
+</body>
+</html>
