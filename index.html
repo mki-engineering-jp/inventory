@@ -245,9 +245,13 @@
           <input type="text" id="e-ref" placeholder="任意">
         </div>
         <div id="e-price-wrap">
-          <label class="f">単価（円・任意）</label>
+          <label class="f" id="e-price-label">仕入単価（円・任意）</label>
           <input type="number" id="e-price" inputmode="decimal" min="0" step="0.01" placeholder="マスタの単価を使う">
         </div>
+      </div>
+      <div style="margin-top:12px">
+        <label class="f">シリアルナンバー（任意・複数はカンマ区切り）</label>
+        <input type="text" id="e-serial" placeholder="例：A001234, A001235">
       </div>
       <div style="margin-top:12px">
         <label class="f">備考</label>
@@ -276,7 +280,7 @@
     <div class="card">
       <h2>入出庫履歴</h2>
       <div class="row" style="margin-bottom:10px">
-        <input type="search" id="h-q" placeholder="型番・品名・取引先・伝票番号・備考で検索">
+        <input type="search" id="h-q" placeholder="型番・品名・取引先・伝票番号・シリアル・備考で検索">
         <select id="h-type" class="fix" style="flex-basis:130px"><option value="">すべて</option><option value="in">入庫</option><option value="out">出庫</option><option value="adjust">調整</option></select>
         <input type="date" id="h-from" class="fix" style="flex-basis:160px" title="開始日">
         <input type="date" id="h-to" class="fix" style="flex-basis:160px" title="終了日">
@@ -285,7 +289,7 @@
       <div class="muted" id="h-summary" style="margin-bottom:8px"></div>
       <div class="tbl-wrap">
         <table id="history-table">
-          <thead><tr><th>日付</th><th>種別</th><th>型番</th><th class="hide-sm">品名</th><th class="num">数量</th><th class="hide-sm">取引先</th><th class="hide-sm">伝票番号</th><th class="hide-sm">備考</th><th class="hide-sm">登録者</th><th></th></tr></thead>
+          <thead><tr><th>日付</th><th>種別</th><th>型番</th><th class="hide-sm">品名</th><th class="num">数量</th><th class="hide-sm">取引先</th><th class="hide-sm">伝票番号</th><th class="hide-sm">シリアル</th><th class="hide-sm">備考</th><th class="hide-sm">登録者</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -335,6 +339,15 @@
       </div>
     </div>
     <div class="card">
+      <h2>幹開発 納品書の取込（出庫登録）</h2>
+      <p class="muted" style="margin-top:0">見積・注文書アプリで作った納品書（.xlsx、シート「納品書BK」）をそのまま読み込み、<strong>出庫</strong>として登録します。複数ファイルをまとめて選べます。伝票番号は納品書No（例 SA26086）、取引先は宛名、備考には摘要と納品書の備考が入ります。納品書の単価は<strong>販売単価</strong>として記録し、在庫金額（仕入単価ベース）には影響しません。<br>型番が製品マスタにない場合は自動で登録します（品名は型番と同じ。あとから「製品」タブで直せます）。同じ伝票番号・型番が既に登録済みの行は二重登録を防ぐためスキップします。</p>
+      <div class="row">
+        <input type="file" id="f-dn" accept=".xlsx,.xls" multiple>
+      </div>
+      <div id="log-dn" class="import-log hidden" style="margin-top:10px"></div>
+      <button id="run-dn" class="btn primary hidden" style="margin-top:10px">この内容で出庫登録する</button>
+    </div>
+    <div class="card">
       <h2>製品マスタの取込</h2>
       <p class="muted" style="margin-top:0">列：<code>型番</code> <code>品名</code> <code>区分</code>（単品/完成品/セット） <code>カテゴリ</code> <code>単位</code> <code>単価</code> <code>発注点</code> <code>備考</code>（1行目が見出し）。型番が既にあれば上書き、なければ追加します。</p>
       <div class="row">
@@ -356,7 +369,7 @@
     </div>
     <div class="card">
       <h2>入出庫履歴の取込</h2>
-      <p class="muted" style="margin-top:0">列：<code>日付</code> <code>種別</code>（入庫/出庫/調整） <code>型番</code> <code>取引先</code> <code>数量</code> <code>単価</code> <code>伝票番号</code> <code>備考</code>。型番は製品マスタに登録済みのものだけ取り込みます。取引先が未登録なら自動で追加します。</p>
+      <p class="muted" style="margin-top:0">列：<code>日付</code> <code>種別</code>（入庫/出庫/調整） <code>型番</code> <code>取引先</code> <code>数量</code> <code>仕入単価</code>（入庫） <code>販売単価</code>（出庫） <code>伝票番号</code> <code>シリアル</code> <code>備考</code>。型番は製品マスタに登録済みのものだけ取り込みます。取引先が未登録なら自動で追加します。</p>
       <div class="row">
         <button id="t-tx" class="btn fix">テンプレートをダウンロード</button>
         <input type="file" id="f-tx" accept=".xlsx,.xls,.csv">
@@ -381,7 +394,7 @@
       <div><label class="f">カテゴリ</label><input type="text" id="p-cat" list="cat-list"><datalist id="cat-list"></datalist></div>
       <div><label class="f">単位</label><input type="text" id="p-unit" value="台"></div>
       <div><label class="f">発注点（これ以下で警告）</label><input type="number" id="p-reorder" value="0" min="0"></div>
-      <div><label class="f">単価（円・任意）</label><input type="number" id="p-price" inputmode="decimal" min="0" step="0.01" placeholder="未設定"></div>
+      <div><label class="f">仕入単価（円・任意・在庫金額の計算用）</label><input type="number" id="p-price" inputmode="decimal" min="0" step="0.01" placeholder="未設定"></div>
     </div>
     <div style="margin-top:10px"><label class="f">音声入力の呼び名（任意・カンマ区切り。例：ベクサ, ヘッドセット）</label><input type="text" id="p-yomi" placeholder="声で言うときの名前"></div>
     <div style="margin-top:10px"><label class="f">区分</label>
@@ -577,7 +590,8 @@ function setEntryType(t) {
   $('e-qty-label').textContent = t === 'adjust' ? '増減数（減らす場合はマイナス、棚卸で合わせる）' : t === 'build' ? '組み立てる台数' : '数量';
   $('build-opts').classList.toggle('hidden', t !== 'build');
   $('e-partner').closest('div').style.display = t === 'build' ? 'none' : '';
-  $('e-price-wrap').style.display = t === 'in' ? '' : 'none';
+  $('e-price-wrap').style.display = (t === 'in' || t === 'out') ? '' : 'none';
+  $('e-price-label').textContent = t === 'out' ? '販売単価（円・任意）' : '仕入単価（円・任意）';
   renderEntryLists(); updateProductInfo();
 }
 $('e-unbuild').addEventListener('change', updateProductInfo);
@@ -606,7 +620,7 @@ function updateProductInfo() {
     info = (p.kind === 'kit' ? '出荷可能数: ' : '現在庫: ') + stockOf(p.id) + ' ' + p.unit + (p.category ? '　カテゴリ: ' + p.category : '') + (p.active ? '' : '　※廃番');
     if (p.kind !== 'item') info += '　[' + PKIND_LABEL[p.kind] + '] 構成: ' + (bomText(p.id) || '未登録');
     if (priceOf(p) != null) info += '　単価: ' + yen(priceOf(p));
-    $('e-price').placeholder = priceOf(p) != null ? 'マスタ単価 ' + yen(priceOf(p)) : '任意';
+    $('e-price').placeholder = state.entryType === 'out' ? '任意（納品書の販売単価）' : (priceOf(p) != null ? 'マスタ単価 ' + yen(priceOf(p)) : '任意');
     if (p.kind === 'assembly' && s && s.buildable != null) info += '　部品から組立可: ' + s.buildable;
   }
   $('e-product-info').textContent = info;
@@ -620,7 +634,7 @@ $('qty-minus').addEventListener('click', function() { var v = parseInt($('e-qty'
 $('qty-plus').addEventListener('click', function() { $('e-qty').value = parseInt($('e-qty').value || '0', 10) + 1; });
 
 $('entry-clear').addEventListener('click', function() {
-  $('e-qty').value = 1; $('e-ref').value = ''; $('e-note').value = ''; $('e-price').value = ''; $('e-partner').value = ''; $('e-product').value = '';
+  $('e-qty').value = 1; $('e-ref').value = ''; $('e-note').value = ''; $('e-price').value = ''; $('e-serial').value = ''; $('e-partner').value = ''; $('e-product').value = '';
   $('e-date').value = todayStr(); $('e-unbuild').checked = false;
   showMsg('entry-msg', '', ''); showMsg('mic-msg', '', ''); updateProductInfo();
 });
@@ -633,6 +647,7 @@ $('entry-submit').addEventListener('click', function() {
   if (state.entryType === 'build' && p.kind !== 'assembly') { showMsg('entry-msg', '組立は「完成品」区分の製品だけ登録できます。', 'err'); return; }
   if ((state.entryType === 'build' || p.kind === 'kit') && !bomOf(p.id).length) { showMsg('entry-msg', 'この製品には構成（部品）が登録されていません。「製品」タブで登録してください。', 'err'); return; }
   var date = $('e-date').value || todayStr(), note = $('e-note').value.trim(), ref = $('e-ref').value.trim(), partner = $('e-partner').value ? +$('e-partner').value : null;
+  var serial = $('e-serial').value.trim();
   var shortage = [];
   if (state.entryType === 'out' && p.kind !== 'kit' && stockOf(p.id) - qty < 0) shortage.push(p.code + '（現在庫 ' + stockOf(p.id) + '）');
   if ((state.entryType === 'build' && !$('e-unbuild').checked) || (state.entryType === 'out' && p.kind === 'kit')) {
@@ -645,11 +660,16 @@ $('entry-submit').addEventListener('click', function() {
     q = sb.rpc('inv_build', { p_product_id: p.id, p_qty: qty, p_date: date, p_note: note, p_unbuild: un });
   } else if (state.entryType === 'out' && p.kind === 'kit') {
     label = 'セット出庫';
-    q = sb.rpc('inv_kit_out', { p_product_id: p.id, p_qty: qty, p_date: date, p_partner_id: partner, p_ref_no: ref, p_note: note });
+    q = sb.rpc('inv_kit_out', { p_product_id: p.id, p_qty: qty, p_date: date, p_partner_id: partner, p_ref_no: ref, p_note: note }).then(function(res) {
+      // セット自身の出庫行にシリアルを付ける（RPC はグループIDを返す）
+      if (res.error || !serial || !res.data) return res;
+      return sb.from('inv_transactions').update({ serial_no: serial }).eq('group_id', res.data).eq('product_id', p.id).then(function() { return res; });
+    });
   } else {
     label = TYPE_LABEL[state.entryType];
-    var price = state.entryType === 'in' && $('e-price').value !== '' ? Number($('e-price').value) : null;
-    q = sb.from('inv_transactions').insert({ tx_date: date, type: state.entryType, product_id: p.id, partner_id: partner, qty: qty, ref_no: ref, note: note, unit_price: price });
+    var pv = $('e-price').value !== '' ? Number($('e-price').value) : null;
+    var price = state.entryType === 'in' ? pv : null, sprice = state.entryType === 'out' ? pv : null;
+    q = sb.from('inv_transactions').insert({ tx_date: date, type: state.entryType, product_id: p.id, partner_id: partner, qty: qty, ref_no: ref, note: note, unit_price: price, sales_price: sprice, serial_no: serial });
   }
   setBusy('entry-submit', true, '登録中...');
   q.then(function(res) {
@@ -658,7 +678,7 @@ $('entry-submit').addEventListener('click', function() {
     showMsg('entry-msg', '', '');
     toast(label + ' を登録しました：' + p.code + ' × ' + qty);
     // 連続登録しやすいよう 伝票番号・備考・取引先 は残す。数量は1に、単価は空（マスタ単価）に戻す
-    $('e-qty').value = 1; $('e-price').value = ''; showMsg('mic-msg', '', '');
+    $('e-qty').value = 1; $('e-price').value = ''; $('e-serial').value = ''; showMsg('mic-msg', '', '');
     loadAll().then(updateProductInfo);
   });
 });
@@ -738,6 +758,7 @@ function txRow(t, cols) {
     date: '<td>' + fmtDate(t.tx_date) + '</td>', type: '<td><span class="pill ' + t.type + '">' + TYPE_LABEL[t.type] + '</span>' + (t.origin && t.origin !== 'manual' ? ' <span class="pill origin">' + ORIGIN_LABEL[t.origin] + '</span>' : '') + '</td>',
     product: '<td>' + esc(p.code) + '<span class="hide-sm muted"> ' + esc(p.name) + '</span></td>', code: '<td>' + esc(p.code) + '</td>', name: '<td class="hide-sm">' + esc(p.name) + '</td>',
     qty: '<td class="num"><strong>' + q + '</strong></td>', partner: '<td class="hide-sm">' + esc(pa ? pa.name : '') + '</td>', ref: '<td class="hide-sm">' + esc(t.ref_no) + '</td>',
+    serial: '<td class="hide-sm" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(t.serial_no || '') + '">' + esc(t.serial_no || '') + '</td>',
     note: '<td class="hide-sm">' + esc(t.note) + '</td>', by: '<td class="hide-sm muted">' + esc((t.created_by || '').split('@')[0]) + '</td>',
     del: '<td><button class="btn sm danger" data-del="' + t.id + '">削除</button></td>'
   };
@@ -775,14 +796,14 @@ function filteredHistory() {
     if (type && t.type !== type) return false;
     if (from && t.tx_date < from) return false;
     if (to && t.tx_date > to) return false;
-    if (q) { var p = productById(t.product_id) || {}, pa = partnerById(t.partner_id) || {}; var hay = [p.code, p.name, pa.name, t.ref_no, t.note, t.created_by].join(' ').toLowerCase(); if (hay.indexOf(q) < 0) return false; }
+    if (q) { var p = productById(t.product_id) || {}, pa = partnerById(t.partner_id) || {}; var hay = [p.code, p.name, pa.name, t.ref_no, t.serial_no, t.note, t.created_by].join(' ').toLowerCase(); if (hay.indexOf(q) < 0) return false; }
     return true;
   });
 }
 function renderHistory() {
   var rows = filteredHistory();
   var tb = $('history-table').querySelector('tbody');
-  tb.innerHTML = rows.slice(0, 500).map(function(t) { return txRow(t, ['date', 'type', 'code', 'name', 'qty', 'partner', 'ref', 'note', 'by', 'del']); }).join('') || '<tr><td colspan="10" class="muted">該当する履歴がありません。</td></tr>';
+  tb.innerHTML = rows.slice(0, 500).map(function(t) { return txRow(t, ['date', 'type', 'code', 'name', 'qty', 'partner', 'ref', 'serial', 'note', 'by', 'del']); }).join('') || '<tr><td colspan="11" class="muted">該当する履歴がありません。</td></tr>';
   bindDelete(tb);
   var sumIn = rows.filter(function(t) { return t.type === 'in'; }).reduce(function(a, t) { return a + t.qty; }, 0), sumOut = rows.filter(function(t) { return t.type === 'out'; }).reduce(function(a, t) { return a + t.qty; }, 0);
   $('h-summary').textContent = rows.length + ' 件　入庫合計 ' + sumIn + '　出庫合計 ' + sumOut + (rows.length > 500 ? '　（最新500件を表示。Excel出力には全件含まれます）' : '');
@@ -895,7 +916,7 @@ function sheetStock() {
   return state.stock.map(function(s) { var up = s.unit_price == null ? '' : Number(s.unit_price); return { '型番': s.code, '品名': s.name, '区分': PKIND_LABEL[s.kind] || '単品', 'カテゴリ': s.category, '在庫数': s.stock, '完成品に内包': s.contained || 0, '組立可能数': s.buildable == null ? '' : s.buildable, '単位': s.unit, '単価': up, '在庫金額': up === '' || s.kind === 'kit' ? '' : s.stock * up, '発注点': s.reorder_point, '状態': s.active ? '取扱中' : '廃番', '最終入出庫日': s.last_tx_date || '', '備考': s.note }; });
 }
 function sheetHistory(rows) {
-  return rows.map(function(t) { var p = productById(t.product_id) || {}, pa = partnerById(t.partner_id) || {}; var up = t.unit_price != null ? Number(t.unit_price) : (p.unit_price != null ? Number(p.unit_price) : ''); return { '日付': t.tx_date, '種別': TYPE_LABEL[t.type], '登録元': t.origin && t.origin !== 'manual' ? ORIGIN_LABEL[t.origin] : '', '型番': p.code || '', '品名': p.name || '', '数量': t.qty, '増減': signedQty(t), '単価': up, '金額': up === '' ? '' : Math.abs(t.qty) * up, '取引先': pa.name || '', '伝票番号': t.ref_no, '備考': t.note, '登録者': t.created_by, '登録日時': t.created_at, 'グループID': t.group_id || '' }; });
+  return rows.map(function(t) { var p = productById(t.product_id) || {}, pa = partnerById(t.partner_id) || {}; var up = t.unit_price != null ? Number(t.unit_price) : (p.unit_price != null ? Number(p.unit_price) : ''); return { '日付': t.tx_date, '種別': TYPE_LABEL[t.type], '登録元': t.origin && t.origin !== 'manual' ? ORIGIN_LABEL[t.origin] : '', '型番': p.code || '', '品名': p.name || '', '数量': t.qty, '増減': signedQty(t), '仕入単価': up, '仕入金額': up === '' ? '' : Math.abs(t.qty) * up, '販売単価': t.sales_price != null ? Number(t.sales_price) : '', '売上金額': t.sales_price != null ? Math.abs(t.qty) * Number(t.sales_price) : '', '取引先': pa.name || '', '伝票番号': t.ref_no, 'シリアル': t.serial_no || '', '備考': t.note, '登録者': t.created_by, '登録日時': t.created_at, 'グループID': t.group_id || '' }; });
 }
 function sheetProducts() { return state.products.map(function(p) { return { '型番': p.code, '品名': p.name, '区分': PKIND_LABEL[p.kind] || '単品', 'カテゴリ': p.category, '単位': p.unit, '単価': p.unit_price == null ? '' : Number(p.unit_price), '発注点': p.reorder_point, '呼び名': p.yomi || '', '備考': p.note, '状態': p.active ? '取扱中' : '廃番' }; }); }
 function sheetBom() { return state.bom.map(function(b) { var p = productById(b.parent_id) || {}, c = productById(b.child_id) || {}; return { '親型番': p.code || '', '親品名': p.name || '', '子型番': c.code || '', '子品名': c.name || '', '数量': b.qty }; }); }
@@ -907,7 +928,7 @@ $('x-history').addEventListener('click', function() { download(wbOf([{ name: '�
 $('x-all').addEventListener('click', function() { download(wbOf([{ name: '在庫一覧', rows: sheetStock() }, { name: '入出庫履歴', rows: sheetHistory(state.tx) }, { name: '製品マスタ', rows: sheetProducts() }, { name: '構成', rows: sheetBom() }, { name: '取引先', rows: sheetPartners() }]), '幹開発_在庫データ'); });
 $('t-products').addEventListener('click', function() { download(wbOf([{ name: '製品マスタ', rows: [{ '型番': 'SSW-1121', '品名': 'VEXA ヘッドセット', '区分': '単品', 'カテゴリ': 'VEXA', '単位': '台', '単価': '', '発注点': 10, '呼び名': 'ベクサ, ヘッドセット', '備考': '' },{ '型番': 'SQ-SET-A', '品名': 'square 基本セット', '区分': 'セット', 'カテゴリ': 'SQUARE', '単位': 'セット', '単価': '', '発注点': 0, '備考': '構成は「構成」シートで登録' }] }]), '製品マスタ_テンプレート'); });
 $('t-bom').addEventListener('click', function() { download(wbOf([{ name: '構成', rows: [{ '親型番': 'SQ-SET-A', '子型番': 'SQ-BASE', '数量': 1 }, { '親型番': 'SQ-SET-A', '子型番': 'SQ-HANDSET', '数量': 4 }] }]), '構成_テンプレート'); });
-$('t-tx').addEventListener('click', function() { download(wbOf([{ name: '入出庫', rows: [{ '日付': todayStr(), '種別': '入庫', '型番': 'SSW-1121', '取引先': '', '数量': 10, '単価': '', '伝票番号': '', '備考': '初期在庫' }] }]), '入出庫_テンプレート'); });
+$('t-tx').addEventListener('click', function() { download(wbOf([{ name: '入出庫', rows: [{ '日付': todayStr(), '種別': '入庫', '型番': 'SSW-1121', '取引先': '', '数量': 10, '仕入単価': '', '販売単価': '', '伝票番号': '', 'シリアル': '', '備考': '初期在庫' }] }]), '入出庫_テンプレート'); });
 
 // ───────────────────────── Excel 取込 ─────────────────────────
 function readSheet(file, preferName) {
@@ -924,7 +945,88 @@ function toDateStr(v) {
   if (typeof v === 'number') { var d = new Date(Math.round((v - 25569) * 86400 * 1000)); return toDateStr(d); }
   return '';
 }
-var pendingProducts = null, pendingTx = null;
+var pendingProducts = null, pendingTx = null, pendingDn = null;
+// ───────── 幹開発 納品書（見積・注文書アプリ出力）の取込 ─────────
+function readWorkbook(file) {
+  return new Promise(function(resolve, reject) {
+    var fr = new FileReader();
+    fr.onload = function(e) { try { resolve(XLSX.read(e.target.result, { type: 'array', cellDates: true })); } catch (err) { reject(err); } };
+    fr.onerror = reject; fr.readAsArrayBuffer(file);
+  });
+}
+function cv(ws, addr) { var c = ws[addr]; return c ? c.v : ''; }
+function normPartner(name) { return normVoice(String(name || '').replace(/株式会社|有限会社|合同会社|\(株\)|（株）|\(有\)|（有）|様$/g, '')); }
+function parseDeliveryNote(wb, fname) {
+  var name = wb.SheetNames.find(function(n) { return /^納品書/.test(n); }) || wb.SheetNames[0];
+  var ws = wb.Sheets[name];
+  var ref = (String(cv(ws, 'N2')).trim() + String(cv(ws, 'O2')).trim()).replace(/\s+/g, '');
+  var date = toDateStr(cv(ws, 'N3')) || todayStr();
+  var customer = String(cv(ws, 'C5')).trim();
+  if (!/品\s*番/.test(String(cv(ws, 'B12'))) || !ref) throw new Error(fname + '：納品書の形式ではないようです（B12 に「品番・品名」、N2/O2 に伝票番号がある前提）');
+  var items = [], tekiyo = '';
+  for (var r = 13; r <= 60; r++) {
+    var b = String(cv(ws, 'B' + r)).trim();
+    if (/^摘要/.test(b)) { tekiyo = String(cv(ws, 'C' + r)).trim(); break; }
+    if (/^以下余白/.test(b) || /^税/.test(b)) { continue; }
+    if (!b) continue;
+    var qty = Number(cv(ws, 'F' + r)); if (!qty || isNaN(qty)) continue;
+    var up = cv(ws, 'I' + r); var upNum = up === '' ? null : Number(up); if (upNum != null && isNaN(upNum)) upNum = null;
+    items.push({ code: b, qty: Math.round(qty), unit_price: upNum, memo: String(cv(ws, 'P' + r)).trim() });
+  }
+  return { file: fname, ref: ref, date: date, customer: customer, tekiyo: tekiyo, items: items };
+}
+$('f-dn').addEventListener('change', function() {
+  var files = Array.prototype.slice.call(this.files); if (!files.length) return;
+  Promise.all(files.map(function(f) { return readWorkbook(f).then(function(wb) { return parseDeliveryNote(wb, f.name); }); })).then(function(notes) {
+    var log = [], recs = [], newProducts = {}, newPartners = {}, skipped = 0;
+    notes.forEach(function(nt) {
+      var pa = null;
+      state.partners.filter(function(x) { return x.active; }).forEach(function(x) { if (normPartner(x.name) && normPartner(x.name) === normPartner(nt.customer)) pa = x; });
+      if (!pa && nt.customer) newPartners[nt.customer] = 1;
+      log.push('■ ' + nt.file + '　伝票 ' + nt.ref + '　' + nt.date + '　宛先 ' + (pa ? pa.name : nt.customer + '（新規登録）') + (nt.tekiyo ? '　摘要 ' + nt.tekiyo : ''));
+      if (!nt.items.length) { log.push('　明細が見つかりません'); return; }
+      nt.items.forEach(function(it) {
+        var p = state.products.find(function(x) { return x.code.toLowerCase() === it.code.toLowerCase(); });
+        var dup = p && state.tx.some(function(t) { return t.type === 'out' && t.product_id === p.id && t.ref_no === nt.ref; });
+        if (dup) { skipped++; log.push('　' + it.code + ' × ' + it.qty + '　→ 伝票 ' + nt.ref + ' で登録済みのためスキップ'); return; }
+        if (!p) newProducts[it.code] = 1;
+        recs.push({ ref: nt.ref, date: nt.date, customer: nt.customer, partner_id: pa ? pa.id : null, code: it.code, product: p || null, qty: it.qty, unit_price: it.unit_price, note: [nt.tekiyo, it.memo].filter(Boolean).join(' ') });
+        log.push('　' + it.code + ' × ' + it.qty + (it.unit_price != null ? '　@' + yen(it.unit_price) : '') + (p ? (p.kind === 'kit' ? '　（セット：部品を自動出庫）' : '') : '　（製品マスタに新規登録）'));
+      });
+    });
+    var np = Object.keys(newProducts), npa = Object.keys(newPartners);
+    log.unshift('納品書 ' + notes.length + ' 件 → 出庫 ' + recs.length + ' 行' + (skipped ? '（登録済み ' + skipped + ' 行はスキップ）' : '') + (np.length ? '　新規製品: ' + np.join('、') : '') + (npa.length ? '　新規取引先: ' + npa.join('、') : ''));
+    $('log-dn').textContent = log.join('\n'); $('log-dn').classList.remove('hidden');
+    pendingDn = { recs: recs, newProducts: np, newPartners: npa }; $('run-dn').classList.toggle('hidden', !recs.length);
+  }).catch(function(e) { $('log-dn').textContent = '読み込みエラー: ' + (e.message || e); $('log-dn').classList.remove('hidden'); pendingDn = null; $('run-dn').classList.add('hidden'); });
+});
+$('run-dn').addEventListener('click', function() {
+  if (!pendingDn) return; setBusy('run-dn', true, '登録中...');
+  var d = pendingDn;
+  var step = d.newProducts.length ? sb.from('inv_products').insert(d.newProducts.map(function(c) { return { code: c, name: c, kind: 'item', unit: '台', category: '', note: '納品書取込で自動登録', active: true }; })) : Promise.resolve({});
+  step.then(function(r0) { if (r0.error) throw r0.error;
+    return d.newPartners.length ? sb.from('inv_partners').insert(d.newPartners.map(function(n) { return { name: n, kind: 'customer' }; })) : { };
+  }).then(function(r1) { if (r1.error) throw r1.error;
+    return Promise.all([sb.from('inv_products').select('*'), sb.from('inv_partners').select('*')]);
+  }).then(function(rs) {
+    if (rs[0].error) throw rs[0].error; if (rs[1].error) throw rs[1].error;
+    var byCode = {}; rs[0].data.forEach(function(p) { byCode[p.code.toLowerCase()] = p; });
+    var byPartner = {}; rs[1].data.forEach(function(x) { byPartner[normPartner(x.name)] = x.id; });
+    var plain = [], kits = [];
+    d.recs.forEach(function(r) {
+      var p = byCode[r.code.toLowerCase()]; if (!p) return;
+      var pid = r.partner_id || byPartner[normPartner(r.customer)] || null;
+      if (p.kind === 'kit') kits.push({ p_product_id: p.id, p_qty: r.qty, p_date: r.date, p_partner_id: pid, p_ref_no: r.ref, p_note: r.note });
+      else plain.push({ tx_date: r.date, type: 'out', product_id: p.id, partner_id: pid, qty: r.qty, sales_price: r.unit_price, ref_no: r.ref, note: r.note });
+    });
+    var chain = plain.length ? sb.from('inv_transactions').insert(plain).then(function(r) { if (r.error) throw r.error; }) : Promise.resolve();
+    kits.forEach(function(k) { chain = chain.then(function() { return sb.rpc('inv_kit_out', k).then(function(r) { if (r.error) throw r.error; }); }); });
+    return chain.then(function() { return plain.length + kits.length; });
+  }).then(function(n) {
+    setBusy('run-dn', false, 'この内容で出庫登録する');
+    toast(n + ' 行の出庫を登録しました'); pendingDn = null; $('run-dn').classList.add('hidden'); $('f-dn').value = ''; $('log-dn').textContent += '\n完了：' + n + ' 行を登録しました。'; loadAll();
+  }).catch(function(e) { setBusy('run-dn', false, 'この内容で出庫登録する'); $('log-dn').textContent += '\n失敗: ' + (e.message || e); });
+});
 $('f-products').addEventListener('change', function() {
   var f = this.files[0]; if (!f) return;
   readSheet(f).then(function(rows) {
@@ -998,8 +1100,9 @@ $('f-tx').addEventListener('change', function() {
       var qty = parseInt(cell(r, ['数量', 'qty']), 10); if (isNaN(qty) || (type !== 'adjust' && qty <= 0) || qty === 0) { log.push(ln + '数量が不正のためスキップ'); return; }
       var pname = String(cell(r, ['取引先', 'partner'])).trim();
       if (pname && !state.partners.some(function(x) { return x.name === pname; })) newPartners[pname] = 1;
-      var upr = cell(r, ['単価', 'unit_price']); var uprNum = upr === '' ? null : Number(String(upr).replace(/[¥,円\s]/g, '')); if (uprNum != null && isNaN(uprNum)) uprNum = null;
-      recs.push({ tx_date: date, type: type, product_code: p.code, product_id: p.id, partner_name: pname, qty: qty, unit_price: uprNum, ref_no: String(cell(r, ['伝票番号', 'ref_no'])).trim(), note: String(cell(r, ['備考', 'note'])).trim() });
+      var upr = cell(r, ['単価', '仕入単価', 'unit_price']); var uprNum = upr === '' ? null : Number(String(upr).replace(/[¥,円\s]/g, '')); if (uprNum != null && isNaN(uprNum)) uprNum = null;
+      var spr = cell(r, ['販売単価', 'sales_price']); var sprNum = spr === '' ? null : Number(String(spr).replace(/[¥,円\s]/g, '')); if (sprNum != null && isNaN(sprNum)) sprNum = null;
+      recs.push({ tx_date: date, type: type, product_code: p.code, product_id: p.id, partner_name: pname, qty: qty, unit_price: uprNum, sales_price: sprNum, ref_no: String(cell(r, ['伝票番号', 'ref_no'])).trim(), serial_no: String(cell(r, ['シリアル', 'シリアルナンバー', 'serial_no'])).trim(), note: String(cell(r, ['備考', 'note'])).trim() });
     });
     var np = Object.keys(newPartners);
     log.unshift('読み取り: ' + rows.length + ' 行 → 取込対象 ' + recs.length + ' 件' + (np.length ? '　新規取引先を自動追加: ' + np.join('、') : ''));
@@ -1016,7 +1119,7 @@ $('run-tx').addEventListener('click', function() {
   }).then(function(r1) {
     if (r1.error) throw r1.error;
     var byName = {}; r1.data.forEach(function(p) { byName[p.name] = p.id; });
-    var rows = pendingTx.recs.map(function(r) { return { tx_date: r.tx_date, type: r.type, product_id: r.product_id, partner_id: r.partner_name ? (byName[r.partner_name] || null) : null, qty: r.qty, unit_price: r.unit_price, ref_no: r.ref_no, note: r.note }; });
+    var rows = pendingTx.recs.map(function(r) { return { tx_date: r.tx_date, type: r.type, product_id: r.product_id, partner_id: r.partner_name ? (byName[r.partner_name] || null) : null, qty: r.qty, unit_price: r.unit_price, sales_price: r.sales_price, ref_no: r.ref_no, serial_no: r.serial_no || '', note: r.note }; });
     return sb.from('inv_transactions').insert(rows);
   }).then(function(r2) {
     setBusy('run-tx', false, 'この内容で取り込む');
