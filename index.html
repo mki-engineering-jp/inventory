@@ -251,6 +251,10 @@
       </div>
       <div id="entry-msg" class="msg"></div>
       <button id="entry-submit" class="btn primary big" style="width:100%;margin-top:14px">登録する</button>
+      <div class="muted" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;font-size:12px">
+        <span>登録後も 日付・種別・製品・取引先・伝票番号・備考 は残ります（同じ伝票の続きをそのまま登録できます）</span>
+        <button type="button" id="entry-clear" class="btn sm" style="flex:none">クリア</button>
+      </div>
     </div>
     <div class="card">
       <h2>最近の登録</h2>
@@ -611,6 +615,11 @@ $('e-qty').addEventListener('input', updateProductInfo);
 $('qty-minus').addEventListener('click', function() { var v = parseInt($('e-qty').value || '0', 10) - 1; if (state.entryType !== 'adjust' && v < 1) v = 1; $('e-qty').value = v; });
 $('qty-plus').addEventListener('click', function() { $('e-qty').value = parseInt($('e-qty').value || '0', 10) + 1; });
 
+$('entry-clear').addEventListener('click', function() {
+  $('e-qty').value = 1; $('e-ref').value = ''; $('e-note').value = ''; $('e-price').value = ''; $('e-partner').value = ''; $('e-product').value = '';
+  $('e-date').value = todayStr(); $('e-unbuild').checked = false;
+  showMsg('entry-msg', '', ''); showMsg('mic-msg', '', ''); updateProductInfo();
+});
 $('entry-submit').addEventListener('click', function() {
   var p = resolveProduct($('e-product').value);
   if (!p) { showMsg('entry-msg', '製品を一覧から選択してください。', 'err'); return; }
@@ -644,7 +653,8 @@ $('entry-submit').addEventListener('click', function() {
     if (res.error) { showMsg('entry-msg', '登録に失敗しました: ' + res.error.message, 'err'); return; }
     showMsg('entry-msg', '', '');
     toast(label + ' を登録しました：' + p.code + ' × ' + qty);
-    $('e-qty').value = 1; $('e-ref').value = ''; $('e-note').value = ''; $('e-price').value = ''; showMsg('mic-msg', '', '');
+    // 連続登録しやすいよう 伝票番号・備考・取引先 は残す。数量は1に、単価は空（マスタ単価）に戻す
+    $('e-qty').value = 1; $('e-price').value = ''; showMsg('mic-msg', '', '');
     loadAll().then(updateProductInfo);
   });
 });
