@@ -697,15 +697,17 @@ function applyVoice(alts) {
   var rm = toHalf(rest).match(/(?:伝票|注文|オーダー|発注|受注)(?:番号|ナンバー)?\s*(?:は|を)?\s*([A-Za-z0-9][A-Za-z0-9\-\/]*)/i);
   if (rm) { $('e-ref').value = rm[1].toUpperCase(); filled.push('伝票番号=' + rm[1].toUpperCase()); rest = toHalf(rest).replace(rm[0], ' '); }
   var n = normVoice(rest);
+  // 認識候補（最大3件）すべてを製品・取引先の照合対象にする（第1候補が「サイエンスアート」でも第2候補に「サイエンスアーツ」があれば拾う）
+  var nAll = alts.map(normVoice).join('|');
   // 種別
   var type = /分解/.test(n) ? 'unbuild' : /組立|組み立て|くみたて/.test(n) ? 'build' : /出庫|出荷|しゅっこ|出す/.test(n) ? 'out' : /入庫|入荷|にゅうこ|仕入/.test(n) ? 'in' : /調整|棚卸/.test(n) ? 'adjust' : null;
   if (type) { setEntryType(type === 'unbuild' ? 'build' : type); $('e-unbuild').checked = (type === 'unbuild'); filled.push('種別=' + (type === 'unbuild' ? '分解' : TYPE_LABEL[type])); }
   // 製品：型番・品名の正規化文字列が含まれるものを、長い一致を優先
   var best = null, bestLen = 0, bestKey = '';
   state.products.filter(function(p) { return p.active; }).forEach(function(p) {
-    [p.code, p.name].concat(String(p.yomi || '').split(/[,、，\s]+/)).forEach(function(k) { var nk = normVoice(k); if (nk.length >= 2 && n.indexOf(nk) >= 0 && nk.length > bestLen) { best = p; bestLen = nk.length; bestKey = nk; } });
+    [p.code, p.name].concat(String(p.yomi || '').split(/[,、，\s]+/)).forEach(function(k) { var nk = normVoice(k); if (nk.length >= 2 && nAll.indexOf(nk) >= 0 && nk.length > bestLen) { best = p; bestLen = nk.length; bestKey = nk; } });
     // 型番の数字部分だけ（例「1121」）でも拾う
-    var digits = (p.code.match(/\d{3,}/) || [])[0]; if (digits && n.indexOf(digits) >= 0 && digits.length > bestLen) { best = p; bestLen = digits.length; bestKey = digits; }
+    var digits = (p.code.match(/\d{3,}/) || [])[0]; if (digits && nAll.indexOf(digits) >= 0 && digits.length > bestLen) { best = p; bestLen = digits.length; bestKey = digits; }
   });
   if (best) { $('e-product').value = best.code + ' ' + best.name; filled.push('製品=' + best.code); n = n.replace(bestKey, ' '); } else { $('e-product').value = ''; }
   // 数量：数字（単位付きを優先）→ 漢数字
@@ -720,8 +722,8 @@ function applyVoice(alts) {
     var nk = normVoice(String(x.name).replace(/株式会社|有限会社|合同会社|\(株\)|（株）|\(有\)|（有）/g, ''));
     if (nk.length < 2) return;
     var score = 0;
-    if (n.indexOf(nk) >= 0) score = nk.length + 100;
-    else { for (var L = nk.length - 1; L >= 3; L--) { if (n.indexOf(nk.slice(0, L)) >= 0) { score = L; break; } } }
+    if (nAll.indexOf(nk) >= 0) score = nk.length + 100;
+    else { for (var L = nk.length - 1; L >= 3; L--) { if (nAll.indexOf(nk.slice(0, L)) >= 0) { score = L; break; } } }
     if (score > paLen) { pa = x; paLen = score; }
   });
   if (pa) { renderEntryLists(); $('e-partner').value = String(pa.id); if ($('e-partner').value !== String(pa.id)) { pa = null; } else filled.push('取引先=' + pa.name); }
