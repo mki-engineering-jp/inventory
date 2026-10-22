@@ -19,6 +19,10 @@
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; font-size: 15px; }
   button, input, select, textarea { font: inherit; color: inherit; }
+  /* スマホ：ダブルタップ拡大を無効化（＋−などを連打しても画面が拡大しない）。入力欄は16px以上にしてiOSのフォーカス時自動ズームも防ぐ */
+  button, input, select, textarea, label, .seg, .tabs, .tbl-wrap { touch-action: manipulation; }
+  html { -webkit-text-size-adjust: 100%; }
+  @media (max-width: 640px) { input[type=text], input[type=number], input[type=date], input[type=email], input[type=search], select, textarea { font-size: 16px; } }
   a { color: var(--primary); }
 
   /* ── header ── */
