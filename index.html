@@ -110,6 +110,7 @@
   .photo-thumbs .th { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #f4f6f8; }
   .photo-thumbs .th img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .photo-thumbs .th button { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; min-height: 0; padding: 0; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; border: 0; font-size: 14px; line-height: 24px; }
+  .pthumb { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); vertical-align: middle; cursor: pointer; background: #f4f6f8; }
   .photo-view img { width: 100%; height: auto; border-radius: 10px; margin-bottom: 10px; display: block; }
   .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: center; justify-content: center; z-index: 40; padding: 16px; }
   .modal-bg.show { display: flex; }
@@ -319,7 +320,7 @@
       </div>
       <div class="tbl-wrap">
         <table id="products-table">
-          <thead><tr><th>型番</th><th>品名</th><th>区分</th><th class="hide-sm">構成</th><th class="hide-sm">カテゴリ</th><th class="num hide-sm">単価</th><th class="num hide-sm">発注点</th><th>状態</th><th></th></tr></thead>
+          <thead><tr><th></th><th>型番</th><th>品名</th><th>区分</th><th class="hide-sm">構成</th><th class="hide-sm">カテゴリ</th><th class="num hide-sm">単価</th><th class="num hide-sm">発注点</th><th>状態</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -411,6 +412,14 @@
       <div><label class="f">仕入単価（円・任意・在庫金額の計算用）</label><input type="number" id="p-price" inputmode="decimal" min="0" step="0.01" placeholder="未設定"></div>
     </div>
     <div style="margin-top:10px"><label class="f">音声入力の呼び名（任意・カンマ区切り。例：ベクサ, ヘッドセット）</label><input type="text" id="p-yomi" placeholder="声で言うときの名前"></div>
+    <div style="margin-top:10px"><label class="f">製品写真（任意・1枚。一覧に小さく表示されます）</label>
+      <div class="row" style="align-items:center">
+        <button type="button" id="p-photo-btn" class="btn fix">📷 写真を選ぶ</button>
+        <input type="file" id="p-photo" accept="image/*" class="hidden">
+        <button type="button" id="p-photo-rm" class="btn sm danger hidden">写真を外す</button>
+      </div>
+      <div class="photo-thumbs" id="p-photo-thumb"></div>
+    </div>
     <div style="margin-top:10px"><label class="f">区分</label>
       <select id="p-kind">
         <option value="item">単品（通常の在庫品）</option>
@@ -580,13 +589,15 @@ function renderStock() {
     if (s.contained > 0) extra += '<div class="muted" style="font-size:11px">完成品に内包 +' + s.contained + '（計 ' + (s.stock + s.contained) + '）</div>';
     return '<tr class="clickable' + (low ? ' low' : '') + '" data-id="' + s.id + '">' +
       '<td><strong>' + esc(s.code) + '</strong>' + (s.kind !== 'item' ? ' <span class="pill kind">' + PKIND_LABEL[s.kind] + '</span>' : '') + (s.active ? '' : ' <span class="pill gray">廃番</span>') + '</td>' +
-      '<td>' + esc(s.name) + '</td><td class="hide-sm">' + esc(s.category) + '</td>' +
+      '<td>' + ((productById(s.id) || {}).photo ? '<img class="pthumb" data-pphoto="' + s.id + '" alt="" style="margin-right:6px;float:left">' : '') + esc(s.name) + '</td><td class="hide-sm">' + esc(s.category) + '</td>' +
       '<td class="num"><span class="stock-big">' + s.stock + '</span> <span class="muted">' + esc(s.unit) + '</span>' + (low ? '<span class="low-flag">要発注</span>' : '') + extra + '</td>' +
       '<td class="num hide-sm">' + s.reorder_point + '</td><td class="hide-sm">' + fmtDate(s.last_tx_date) + '</td>' +
       '<td><button class="btn sm" data-entry="' + s.id + '">入出庫</button></td></tr>';
   }).join('') : '<tr><td colspan="7" class="muted">製品が登録されていません。「製品」タブから追加するか、「取込/出力」から一括登録してください。</td></tr>';
+  loadProductThumbs(tb);
   tb.querySelectorAll('tr.clickable').forEach(function(tr) {
     tr.addEventListener('click', function(e) {
+      if (e.target.getAttribute('data-pphoto')) { e.stopPropagation(); return; }
       if (e.target.getAttribute('data-entry')) { var p = productById(+e.target.getAttribute('data-entry')); $('e-product').value = p.code + ' ' + p.name; updateProductInfo(); switchView('entry'); $('e-qty').focus(); return; }
       var p2 = productById(+tr.getAttribute('data-id')); $('h-q').value = p2.code; $('h-type').value = ''; renderHistory(); switchView('history');
     });
@@ -897,11 +908,48 @@ function renderHistory() {
 function renderProducts() {
   var tb = $('products-table').querySelector('tbody');
   tb.innerHTML = state.products.map(function(p) {
-    return '<tr><td><strong>' + esc(p.code) + '</strong></td><td>' + esc(p.name) + '</td><td>' + (p.kind === 'item' ? '<span class="muted">単品</span>' : '<span class="pill kind">' + PKIND_LABEL[p.kind] + '</span>') + '</td><td class="hide-sm muted">' + esc(bomText(p.id)) + '</td><td class="hide-sm">' + esc(p.category) + '</td><td class="num hide-sm">' + yen(p.unit_price) + '</td><td class="num hide-sm">' + p.reorder_point + '</td>' +
+    return '<tr><td>' + (p.photo ? '<img class="pthumb" data-pphoto="' + p.id + '" alt="">' : '') + '</td><td><strong>' + esc(p.code) + '</strong></td><td>' + esc(p.name) + '</td><td>' + (p.kind === 'item' ? '<span class="muted">単品</span>' : '<span class="pill kind">' + PKIND_LABEL[p.kind] + '</span>') + '</td><td class="hide-sm muted">' + esc(bomText(p.id)) + '</td><td class="hide-sm">' + esc(p.category) + '</td><td class="num hide-sm">' + yen(p.unit_price) + '</td><td class="num hide-sm">' + p.reorder_point + '</td>' +
       '<td>' + (p.active ? '<span class="pill in">取扱中</span>' : '<span class="pill gray">廃番</span>') + '</td><td><button class="btn sm" data-edit="' + p.id + '">編集</button></td></tr>';
-  }).join('') || '<tr><td colspan="9" class="muted">製品が登録されていません。</td></tr>';
+  }).join('') || '<tr><td colspan="10" class="muted">製品が登録されていません。</td></tr>';
   tb.querySelectorAll('[data-edit]').forEach(function(b) { b.addEventListener('click', function() { openProduct(productById(+b.getAttribute('data-edit'))); }); });
+  loadProductThumbs(tb);
 }
+// ───────── 製品写真（1枚、inv-photos/products/{id}.jpg） ─────────
+var pPhoto = { current: '', blob: null, remove: false }, thumbUrlCache = {};
+function renderPPhoto() {
+  var th = $('p-photo-thumb'); th.innerHTML = '';
+  if (pPhoto.blob) { th.innerHTML = '<div class="th"><img src="' + URL.createObjectURL(pPhoto.blob) + '"></div>'; }
+  else if (pPhoto.current && !pPhoto.remove) { th.innerHTML = '<div class="th"><img id="p-photo-cur" alt=""></div>'; signedThumb(pPhoto.current).then(function(u) { var im = $('p-photo-cur'); if (im && u) im.src = u; }); }
+  $('p-photo-rm').classList.toggle('hidden', !(pPhoto.blob || (pPhoto.current && !pPhoto.remove)));
+}
+function signedThumb(path) {
+  if (!path) return Promise.resolve('');
+  if (thumbUrlCache[path] && thumbUrlCache[path].exp > Date.now()) return Promise.resolve(thumbUrlCache[path].url);
+  return sb.storage.from(PHOTO_BUCKET).createSignedUrl(path, 3600).then(function(r) { var u = r.data ? r.data.signedUrl : ''; thumbUrlCache[path] = { url: u, exp: Date.now() + 50 * 60 * 1000 }; return u; });
+}
+function loadProductThumbs(root) {
+  root.querySelectorAll('[data-pphoto]').forEach(function(im) {
+    var p = productById(+im.getAttribute('data-pphoto')); if (!p || !p.photo) return;
+    signedThumb(p.photo).then(function(u) { if (u) im.src = u; });
+    im.addEventListener('click', function() { $('ph-title').textContent = p.code + ' ' + p.name; $('ph-body').innerHTML = '<div class="muted">読み込み中…</div>'; $('ph-modal').classList.add('show'); signedThumb(p.photo).then(function(u) { $('ph-body').innerHTML = u ? '<a href="' + u + '" target="_blank" rel="noopener"><img src="' + u + '"></a>' : '<div class="muted">表示できません</div>'; }); });
+  });
+}
+function savePPhoto(pid) {
+  var path = 'products/' + pid + '.jpg';
+  if (pPhoto.blob) {
+    return sb.storage.from(PHOTO_BUCKET).upload(path, pPhoto.blob, { contentType: 'image/jpeg', upsert: true }).then(function(r) { if (r.error) throw r.error; delete thumbUrlCache[path]; return sb.from('inv_products').update({ photo: path }).eq('id', pid); }).then(function(r) { if (r.error) throw r.error; });
+  }
+  if (pPhoto.remove && pPhoto.current) {
+    return sb.storage.from(PHOTO_BUCKET).remove([pPhoto.current]).then(function() { return sb.from('inv_products').update({ photo: '' }).eq('id', pid); }).then(function(r) { if (r.error) throw r.error; });
+  }
+  return Promise.resolve();
+}
+$('p-photo-btn').addEventListener('click', function() { $('p-photo').click(); });
+$('p-photo').addEventListener('change', function() {
+  var f = this.files[0]; this.value = ''; if (!f) return;
+  shrinkImage(f).then(function(b) { pPhoto.blob = b; pPhoto.remove = false; renderPPhoto(); }).catch(function(e) { toast(e.message); });
+});
+$('p-photo-rm').addEventListener('click', function() { pPhoto.blob = null; pPhoto.remove = true; renderPPhoto(); });
 $('p-add').addEventListener('click', function() { openProduct(null); });
 $('p-cancel').addEventListener('click', function() { $('p-modal').classList.remove('show'); });
 $('p-kind').addEventListener('change', function() { $('p-bom').classList.toggle('hidden', $('p-kind').value === 'item'); if ($('p-kind').value !== 'item' && !$('p-bom-rows').children.length) addBomRow(null, 1); });
@@ -917,6 +965,7 @@ function openProduct(p) {
   $('p-id').value = p ? p.id : ''; $('p-code').value = p ? p.code : ''; $('p-name').value = p ? p.name : ''; $('p-cat').value = p ? p.category : '';
   $('p-unit').value = p ? p.unit : '台'; $('p-reorder').value = p ? p.reorder_point : 0; $('p-note').value = p ? p.note : ''; $('p-active').checked = p ? p.active : true;
   $('p-price').value = p && p.unit_price != null ? p.unit_price : ''; $('p-yomi').value = p ? (p.yomi || '') : '';
+  pPhoto = { current: p ? (p.photo || '') : '', blob: null, remove: false }; renderPPhoto();
   $('p-kind').value = p ? (p.kind || 'item') : 'item';
   $('p-bom-rows').innerHTML = '';
   if (p) bomOf(p.id).forEach(function(b) { addBomRow(productById(b.child_id), b.qty); });
@@ -949,7 +998,7 @@ $('p-save').addEventListener('click', function() {
   q.then(function(res) {
     if (res.error) throw res.error;
     var pid = res.data.id;
-    return sb.from('inv_bom').delete().eq('parent_id', pid).then(function(r) {
+    return savePPhoto(pid).then(function() { return sb.from('inv_bom').delete().eq('parent_id', pid); }).then(function(r) {
       if (r.error) throw r.error;
       if (!bom.rows.length) return {};
       return sb.from('inv_bom').insert(bom.rows.map(function(b) { return { parent_id: pid, child_id: b.child_id, qty: b.qty }; }));
