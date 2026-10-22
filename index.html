@@ -63,6 +63,8 @@
   .seg button.active.in { background: var(--in); color: #fff; }
   .seg button.active.out { background: var(--out); color: #fff; }
   .seg button.active.adjust { background: var(--adj); color: #fff; }
+  .seg button.active.build { background: #0e7490; color: #fff; }
+  .pill.build { background: #0e7490; } .pill.unbuild { background: #0e7490; } .pill.kit { background: #7c3aed; }
 
   .qty { display: flex; gap: 8px; align-items: stretch; }
   .qty button { flex: 0 0 56px; font-size: 24px; border-radius: 10px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
@@ -79,6 +81,11 @@
   .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; }
   .pill.in { background: var(--in); } .pill.out { background: var(--out); } .pill.adjust { background: var(--adj); }
   .pill.gray { background: #9aa4b1; }
+  .pill.kind { background: #e9eef5; color: #3b4a5c; font-weight: 600; }
+  .pill.origin { background: #eef1f5; color: #4b5563; font-weight: 600; font-size: 11px; }
+  .bom-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+  .bom-row input.c { flex: 1 1 auto; } .bom-row input.q { flex: 0 0 80px; text-align: center; }
+  .bom-row button { flex: 0 0 auto; }
   .muted { color: var(--muted); font-size: 13px; }
   .stock-big { font-size: 20px; font-weight: 800; }
   .low-flag { color: var(--warn); font-weight: 700; font-size: 12px; margin-left: 6px; }
@@ -193,6 +200,11 @@
         <button data-type="in" class="in active">入庫</button>
         <button data-type="out" class="out">出庫</button>
         <button data-type="adjust" class="adjust">棚卸調整</button>
+        <button data-type="build" class="build">組立</button>
+      </div>
+      <div id="build-opts" class="hidden" style="margin-top:10px">
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="e-unbuild"> 分解（完成品を部品に戻す）</label>
+        <div class="muted" id="build-info" style="margin-top:4px"></div>
       </div>
       <div style="margin-top:14px">
         <label class="f">製品</label>
@@ -272,7 +284,7 @@
       </div>
       <div class="tbl-wrap">
         <table id="products-table">
-          <thead><tr><th>型番</th><th>品名</th><th class="hide-sm">カテゴリ</th><th class="hide-sm">単位</th><th class="num">発注点</th><th class="hide-sm">備考</th><th>状態</th><th></th></tr></thead>
+          <thead><tr><th>型番</th><th>品名</th><th>区分</th><th class="hide-sm">構成</th><th class="hide-sm">カテゴリ</th><th class="num hide-sm">発注点</th><th>状態</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -307,13 +319,23 @@
     </div>
     <div class="card">
       <h2>製品マスタの取込</h2>
-      <p class="muted" style="margin-top:0">列：<code>型番</code> <code>品名</code> <code>カテゴリ</code> <code>単位</code> <code>発注点</code> <code>備考</code>（1行目が見出し）。型番が既にあれば上書き、なければ追加します。</p>
+      <p class="muted" style="margin-top:0">列：<code>型番</code> <code>品名</code> <code>区分</code>（単品/完成品/セット） <code>カテゴリ</code> <code>単位</code> <code>発注点</code> <code>備考</code>（1行目が見出し）。型番が既にあれば上書き、なければ追加します。</p>
       <div class="row">
         <button id="t-products" class="btn fix">テンプレートをダウンロード</button>
         <input type="file" id="f-products" accept=".xlsx,.xls,.csv">
       </div>
       <div id="log-products" class="import-log hidden" style="margin-top:10px"></div>
       <button id="run-products" class="btn primary hidden" style="margin-top:10px">この内容で取り込む</button>
+    </div>
+    <div class="card">
+      <h2>構成（完成品・セットの部品）の取込</h2>
+      <p class="muted" style="margin-top:0">列：<code>親型番</code> <code>子型番</code> <code>数量</code>。親・子とも製品マスタに登録済みであること。親型番ごとに構成を丸ごと置き換えます。</p>
+      <div class="row">
+        <button id="t-bom" class="btn fix">テンプレートをダウンロード</button>
+        <input type="file" id="f-bom" accept=".xlsx,.xls,.csv">
+      </div>
+      <div id="log-bom" class="import-log hidden" style="margin-top:10px"></div>
+      <button id="run-bom" class="btn primary hidden" style="margin-top:10px">この内容で取り込む</button>
     </div>
     <div class="card">
       <h2>入出庫履歴の取込</h2>
@@ -342,6 +364,17 @@
       <div><label class="f">カテゴリ</label><input type="text" id="p-cat" list="cat-list"><datalist id="cat-list"></datalist></div>
       <div><label class="f">単位</label><input type="text" id="p-unit" value="台"></div>
       <div><label class="f">発注点（これ以下で警告）</label><input type="number" id="p-reorder" value="0" min="0"></div>
+    </div>
+    <div style="margin-top:10px"><label class="f">区分</label>
+      <select id="p-kind">
+        <option value="item">単品（通常の在庫品）</option>
+        <option value="assembly">完成品（部品から組み立てて在庫する）</option>
+        <option value="kit">セット（出荷時に部品を束ねる。在庫は部品から計算）</option>
+      </select></div>
+    <div id="p-bom" class="hidden" style="margin-top:10px">
+      <label class="f">構成（1個あたりに必要な部品と数量）</label>
+      <div id="p-bom-rows"></div>
+      <button type="button" class="btn sm" id="p-bom-add" style="margin-top:6px">＋ 部品を追加</button>
     </div>
     <div style="margin-top:10px"><label class="f">備考</label><textarea id="p-note"></textarea></div>
     <label style="display:flex;align-items:center;gap:6px;margin-top:10px"><input type="checkbox" id="p-active" checked> 取扱中（チェックを外すと廃番扱い）</label>
@@ -375,9 +408,14 @@ var STAFF_DOMAIN = '@miki-kk.jp';
 
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 var $ = function(id) { return document.getElementById(id); };
-var state = { products: [], partners: [], stock: [], tx: [], user: null, entryType: 'in', pendingEmail: '' };
-var TYPE_LABEL = { in: '入庫', out: '出庫', adjust: '調整' };
+var state = { products: [], partners: [], stock: [], tx: [], bom: [], user: null, entryType: 'in', pendingEmail: '' };
+var TYPE_LABEL = { in: '入庫', out: '出庫', adjust: '調整', build: '組立' };
+var ORIGIN_LABEL = { build: '組立', unbuild: '分解', kit: 'セット' };
 var KIND_LABEL = { customer: '出庫先', supplier: '入庫元', both: '両方' };
+var PKIND_LABEL = { item: '単品', assembly: '完成品', kit: 'セット' };
+var PKIND_FROM_TEXT = { '単品': 'item', '完成品': 'assembly', '組立': 'assembly', 'セット': 'kit', 'item': 'item', 'assembly': 'assembly', 'kit': 'kit' };
+function bomOf(pid) { return state.bom.filter(function(b) { return b.parent_id === pid; }); }
+function bomText(pid) { return bomOf(pid).map(function(b) { var c = productById(b.child_id); return (c ? c.code : '?') + '×' + b.qty; }).join('、'); }
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function todayStr() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -443,11 +481,12 @@ function loadAll() {
     sb.from('inv_products').select('*').order('code'),
     sb.from('inv_partners').select('*').order('name'),
     sb.from('inv_stock').select('*').order('code'),
-    sb.from('inv_transactions').select('*').order('tx_date', { ascending: false }).order('id', { ascending: false }).limit(5000)
+    sb.from('inv_transactions').select('*').order('tx_date', { ascending: false }).order('id', { ascending: false }).limit(5000),
+    sb.from('inv_bom').select('*')
   ]).then(function(r) {
     var err = r.find(function(x) { return x.error; });
     if (err) { toast('読み込みエラー: ' + err.error.message); console.error(err.error); return; }
-    state.products = r[0].data; state.partners = r[1].data; state.stock = r[2].data; state.tx = r[3].data;
+    state.products = r[0].data; state.partners = r[1].data; state.stock = r[2].data; state.tx = r[3].data; state.bom = r[4].data;
     renderAll();
   });
 }
@@ -482,10 +521,11 @@ function renderStock() {
   var tb = $('stock-table').querySelector('tbody');
   tb.innerHTML = rows.length ? rows.map(function(s) {
     var low = s.active && s.stock <= s.reorder_point;
+    var extra = s.kind === 'kit' ? '<div class="muted" style="font-size:11px">出荷可能数（部品から計算）</div>' : (s.kind === 'assembly' && s.buildable != null ? '<div class="muted" style="font-size:11px">部品から組立可: ' + s.buildable + '</div>' : '');
     return '<tr class="clickable' + (low ? ' low' : '') + '" data-id="' + s.id + '">' +
-      '<td><strong>' + esc(s.code) + '</strong>' + (s.active ? '' : ' <span class="pill gray">廃番</span>') + '</td>' +
+      '<td><strong>' + esc(s.code) + '</strong>' + (s.kind !== 'item' ? ' <span class="pill kind">' + PKIND_LABEL[s.kind] + '</span>' : '') + (s.active ? '' : ' <span class="pill gray">廃番</span>') + '</td>' +
       '<td>' + esc(s.name) + '</td><td class="hide-sm">' + esc(s.category) + '</td>' +
-      '<td class="num"><span class="stock-big">' + s.stock + '</span> <span class="muted">' + esc(s.unit) + '</span>' + (low ? '<span class="low-flag">要発注</span>' : '') + '</td>' +
+      '<td class="num"><span class="stock-big">' + s.stock + '</span> <span class="muted">' + esc(s.unit) + '</span>' + (low ? '<span class="low-flag">要発注</span>' : '') + extra + '</td>' +
       '<td class="num hide-sm">' + s.reorder_point + '</td><td class="hide-sm">' + fmtDate(s.last_tx_date) + '</td>' +
       '<td><button class="btn sm" data-entry="' + s.id + '">入出庫</button></td></tr>';
   }).join('') : '<tr><td colspan="7" class="muted">製品が登録されていません。「製品」タブから追加するか、「取込/出力」から一括登録してください。</td></tr>';
@@ -497,7 +537,7 @@ function renderStock() {
   });
   var active = state.stock.filter(function(s) { return s.active; });
   $('st-products').textContent = active.length;
-  $('st-total').textContent = active.reduce(function(a, s) { return a + s.stock; }, 0);
+  $('st-total').textContent = active.filter(function(s) { return s.kind !== 'kit'; }).reduce(function(a, s) { return a + s.stock; }, 0);
   $('st-low').textContent = active.filter(function(s) { return s.stock <= s.reorder_point; }).length;
   var t = todayStr(); $('st-today').textContent = state.tx.filter(function(x) { return x.tx_date === t; }).length;
 }
@@ -510,11 +550,14 @@ function setEntryType(t) {
   state.entryType = t;
   $('type-seg').querySelectorAll('button').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-type') === t); });
   $('e-partner-label').textContent = t === 'in' ? '取引先（入庫元）' : t === 'out' ? '取引先（出庫先）' : '取引先（任意）';
-  $('e-qty-label').textContent = t === 'adjust' ? '増減数（減らす場合はマイナス、棚卸で合わせる）' : '数量';
-  renderEntryLists();
+  $('e-qty-label').textContent = t === 'adjust' ? '増減数（減らす場合はマイナス、棚卸で合わせる）' : t === 'build' ? '組み立てる台数' : '数量';
+  $('build-opts').classList.toggle('hidden', t !== 'build');
+  $('e-partner').closest('div').style.display = t === 'build' ? 'none' : '';
+  renderEntryLists(); updateProductInfo();
 }
+$('e-unbuild').addEventListener('change', updateProductInfo);
 function renderEntryLists() {
-  var active = state.products.filter(function(p) { return p.active; });
+  var active = state.products.filter(function(p) { return p.active && (state.entryType === 'build' ? p.kind === 'assembly' : state.entryType === 'out' ? true : p.kind !== 'kit'); });
   $('product-list').innerHTML = active.map(function(p) { return '<option value="' + esc(p.code + ' ' + p.name) + '">'; }).join('');
   var kinds = state.entryType === 'in' ? ['supplier', 'both'] : state.entryType === 'out' ? ['customer', 'both'] : ['customer', 'supplier', 'both'];
   var cur = $('e-partner').value;
@@ -532,8 +575,20 @@ $('e-product').addEventListener('input', updateProductInfo);
 $('e-product').addEventListener('change', updateProductInfo);
 function updateProductInfo() {
   var p = resolveProduct($('e-product').value);
-  $('e-product-info').textContent = p ? ('現在庫: ' + stockOf(p.id) + ' ' + p.unit + (p.category ? '　カテゴリ: ' + p.category : '') + (p.active ? '' : '　※廃番')) : '';
+  var s = p ? state.stock.find(function(x) { return x.id === p.id; }) : null;
+  var info = '';
+  if (p) {
+    info = (p.kind === 'kit' ? '出荷可能数: ' : '現在庫: ') + stockOf(p.id) + ' ' + p.unit + (p.category ? '　カテゴリ: ' + p.category : '') + (p.active ? '' : '　※廃番');
+    if (p.kind !== 'item') info += '　[' + PKIND_LABEL[p.kind] + '] 構成: ' + (bomText(p.id) || '未登録');
+    if (p.kind === 'assembly' && s && s.buildable != null) info += '　部品から組立可: ' + s.buildable;
+  }
+  $('e-product-info').textContent = info;
+  if (state.entryType === 'build' && p) {
+    var n = parseInt($('e-qty').value, 10) || 0, un = $('e-unbuild').checked;
+    $('build-info').textContent = n > 0 ? (un ? '分解すると：' : '組み立てると：') + bomOf(p.id).map(function(b) { var c = productById(b.child_id); return (c ? c.code : '?') + ' ' + (un ? '+' : '−') + (b.qty * n); }).join('、') + '　' + p.code + ' ' + (un ? '−' : '+') + n : '';
+  } else { $('build-info').textContent = ''; }
 }
+$('e-qty').addEventListener('input', updateProductInfo);
 $('qty-minus').addEventListener('click', function() { var v = parseInt($('e-qty').value || '0', 10) - 1; if (state.entryType !== 'adjust' && v < 1) v = 1; $('e-qty').value = v; });
 $('qty-plus').addEventListener('click', function() { $('e-qty').value = parseInt($('e-qty').value || '0', 10) + 1; });
 
@@ -542,16 +597,33 @@ $('entry-submit').addEventListener('click', function() {
   if (!p) { showMsg('entry-msg', '製品を一覧から選択してください。', 'err'); return; }
   var qty = parseInt($('e-qty').value, 10);
   if (isNaN(qty) || (state.entryType !== 'adjust' && qty < 1) || (state.entryType === 'adjust' && qty === 0)) { showMsg('entry-msg', '数量を正しく入力してください。', 'err'); return; }
-  if (state.entryType === 'out' && stockOf(p.id) - qty < 0) {
-    if (!confirm('現在庫（' + stockOf(p.id) + '）を超える出庫です。在庫がマイナスになりますが登録しますか？')) return;
+  if (p.kind === 'kit' && state.entryType !== 'out') { showMsg('entry-msg', 'セット品は出庫のみ登録できます（在庫は部品から計算されます）。', 'err'); return; }
+  if (state.entryType === 'build' && p.kind !== 'assembly') { showMsg('entry-msg', '組立は「完成品」区分の製品だけ登録できます。', 'err'); return; }
+  if ((state.entryType === 'build' || p.kind === 'kit') && !bomOf(p.id).length) { showMsg('entry-msg', 'この製品には構成（部品）が登録されていません。「製品」タブで登録してください。', 'err'); return; }
+  var date = $('e-date').value || todayStr(), note = $('e-note').value.trim(), ref = $('e-ref').value.trim(), partner = $('e-partner').value ? +$('e-partner').value : null;
+  var shortage = [];
+  if (state.entryType === 'out' && p.kind !== 'kit' && stockOf(p.id) - qty < 0) shortage.push(p.code + '（現在庫 ' + stockOf(p.id) + '）');
+  if ((state.entryType === 'build' && !$('e-unbuild').checked) || (state.entryType === 'out' && p.kind === 'kit')) {
+    bomOf(p.id).forEach(function(b) { var c = productById(b.child_id); if (c && stockOf(c.id) - b.qty * qty < 0) shortage.push(c.code + '（現在庫 ' + stockOf(c.id) + '、必要 ' + b.qty * qty + '）'); });
   }
-  var rec = { tx_date: $('e-date').value || todayStr(), type: state.entryType, product_id: p.id, partner_id: $('e-partner').value ? +$('e-partner').value : null, qty: qty, ref_no: $('e-ref').value.trim(), note: $('e-note').value.trim() };
+  if (shortage.length && !confirm('在庫がマイナスになる製品があります：\n' + shortage.join('\n') + '\nそれでも登録しますか？')) return;
+  var q, label;
+  if (state.entryType === 'build') {
+    var un = $('e-unbuild').checked; label = un ? '分解' : '組立';
+    q = sb.rpc('inv_build', { p_product_id: p.id, p_qty: qty, p_date: date, p_note: note, p_unbuild: un });
+  } else if (state.entryType === 'out' && p.kind === 'kit') {
+    label = 'セット出庫';
+    q = sb.rpc('inv_kit_out', { p_product_id: p.id, p_qty: qty, p_date: date, p_partner_id: partner, p_ref_no: ref, p_note: note });
+  } else {
+    label = TYPE_LABEL[state.entryType];
+    q = sb.from('inv_transactions').insert({ tx_date: date, type: state.entryType, product_id: p.id, partner_id: partner, qty: qty, ref_no: ref, note: note });
+  }
   setBusy('entry-submit', true, '登録中...');
-  sb.from('inv_transactions').insert(rec).then(function(res) {
+  q.then(function(res) {
     setBusy('entry-submit', false, '登録する');
     if (res.error) { showMsg('entry-msg', '登録に失敗しました: ' + res.error.message, 'err'); return; }
     showMsg('entry-msg', '', '');
-    toast(TYPE_LABEL[rec.type] + ' を登録しました：' + p.code + ' × ' + qty);
+    toast(label + ' を登録しました：' + p.code + ' × ' + qty);
     $('e-qty').value = 1; $('e-ref').value = ''; $('e-note').value = '';
     loadAll().then(updateProductInfo);
   });
@@ -561,7 +633,7 @@ function txRow(t, cols) {
   var p = productById(t.product_id) || { code: '?', name: '', unit: '' }, pa = partnerById(t.partner_id);
   var q = (t.type === 'in' ? '+' : t.type === 'out' ? '−' : (t.qty > 0 ? '+' : '−')) + Math.abs(t.qty);
   var cells = {
-    date: '<td>' + fmtDate(t.tx_date) + '</td>', type: '<td><span class="pill ' + t.type + '">' + TYPE_LABEL[t.type] + '</span></td>',
+    date: '<td>' + fmtDate(t.tx_date) + '</td>', type: '<td><span class="pill ' + t.type + '">' + TYPE_LABEL[t.type] + '</span>' + (t.origin && t.origin !== 'manual' ? ' <span class="pill origin">' + ORIGIN_LABEL[t.origin] + '</span>' : '') + '</td>',
     product: '<td>' + esc(p.code) + '<span class="hide-sm muted"> ' + esc(p.name) + '</span></td>', code: '<td>' + esc(p.code) + '</td>', name: '<td class="hide-sm">' + esc(p.name) + '</td>',
     qty: '<td class="num"><strong>' + q + '</strong></td>', partner: '<td class="hide-sm">' + esc(pa ? pa.name : '') + '</td>', ref: '<td class="hide-sm">' + esc(t.ref_no) + '</td>',
     note: '<td class="hide-sm">' + esc(t.note) + '</td>', by: '<td class="hide-sm muted">' + esc((t.created_by || '').split('@')[0]) + '</td>',
@@ -573,8 +645,16 @@ function bindDelete(tb) {
   tb.querySelectorAll('[data-del]').forEach(function(b) {
     b.addEventListener('click', function() {
       var id = +b.getAttribute('data-del'); var t = state.tx.find(function(x) { return x.id === id; }); var p = productById(t.product_id);
-      if (!confirm('この履歴を削除しますか？\n' + fmtDate(t.tx_date) + ' ' + TYPE_LABEL[t.type] + ' ' + (p ? p.code : '') + ' × ' + t.qty + '\n（在庫数も戻ります）')) return;
-      sb.from('inv_transactions').delete().eq('id', id).then(function(res) { if (res.error) { toast('削除に失敗: ' + res.error.message); return; } toast('削除しました'); loadAll(); });
+      var q;
+      if (t.group_id) {
+        var grp = state.tx.filter(function(x) { return x.group_id === t.group_id; });
+        if (!confirm('これは' + ORIGIN_LABEL[t.origin] + 'でまとめて登録された履歴です。関連する ' + grp.length + ' 件をすべて削除しますか？\n' + grp.map(function(x) { var pp = productById(x.product_id); return TYPE_LABEL[x.type] + ' ' + (pp ? pp.code : '') + ' × ' + x.qty; }).join('\n') + '\n（在庫数も戻ります）')) return;
+        q = sb.from('inv_transactions').delete().eq('group_id', t.group_id);
+      } else {
+        if (!confirm('この履歴を削除しますか？\n' + fmtDate(t.tx_date) + ' ' + TYPE_LABEL[t.type] + ' ' + (p ? p.code : '') + ' × ' + t.qty + '\n（在庫数も戻ります）')) return;
+        q = sb.from('inv_transactions').delete().eq('id', id);
+      }
+      q.then(function(res) { if (res.error) { toast('削除に失敗: ' + res.error.message); return; } toast('削除しました'); loadAll(); });
     });
   });
 }
@@ -610,29 +690,69 @@ function renderHistory() {
 function renderProducts() {
   var tb = $('products-table').querySelector('tbody');
   tb.innerHTML = state.products.map(function(p) {
-    return '<tr><td><strong>' + esc(p.code) + '</strong></td><td>' + esc(p.name) + '</td><td class="hide-sm">' + esc(p.category) + '</td><td class="hide-sm">' + esc(p.unit) + '</td><td class="num">' + p.reorder_point + '</td><td class="hide-sm muted">' + esc(p.note) + '</td>' +
+    return '<tr><td><strong>' + esc(p.code) + '</strong></td><td>' + esc(p.name) + '</td><td>' + (p.kind === 'item' ? '<span class="muted">単品</span>' : '<span class="pill kind">' + PKIND_LABEL[p.kind] + '</span>') + '</td><td class="hide-sm muted">' + esc(bomText(p.id)) + '</td><td class="hide-sm">' + esc(p.category) + '</td><td class="num hide-sm">' + p.reorder_point + '</td>' +
       '<td>' + (p.active ? '<span class="pill in">取扱中</span>' : '<span class="pill gray">廃番</span>') + '</td><td><button class="btn sm" data-edit="' + p.id + '">編集</button></td></tr>';
   }).join('') || '<tr><td colspan="8" class="muted">製品が登録されていません。</td></tr>';
   tb.querySelectorAll('[data-edit]').forEach(function(b) { b.addEventListener('click', function() { openProduct(productById(+b.getAttribute('data-edit'))); }); });
 }
 $('p-add').addEventListener('click', function() { openProduct(null); });
 $('p-cancel').addEventListener('click', function() { $('p-modal').classList.remove('show'); });
+$('p-kind').addEventListener('change', function() { $('p-bom').classList.toggle('hidden', $('p-kind').value === 'item'); if ($('p-kind').value !== 'item' && !$('p-bom-rows').children.length) addBomRow(null, 1); });
+$('p-bom-add').addEventListener('click', function() { addBomRow(null, 1); });
+function addBomRow(child, qty) {
+  var row = document.createElement('div'); row.className = 'bom-row';
+  row.innerHTML = '<input type="text" class="c" list="product-list-all" placeholder="部品の型番を選択" autocomplete="off" value="' + esc(child ? child.code + ' ' + child.name : '') + '"><input type="number" class="q" min="1" value="' + (qty || 1) + '"><button type="button" class="btn sm danger">×</button>';
+  row.querySelector('button').addEventListener('click', function() { row.remove(); });
+  $('p-bom-rows').appendChild(row);
+}
 function openProduct(p) {
   $('p-modal-title').textContent = p ? '製品を編集' : '製品を追加';
   $('p-id').value = p ? p.id : ''; $('p-code').value = p ? p.code : ''; $('p-name').value = p ? p.name : ''; $('p-cat').value = p ? p.category : '';
   $('p-unit').value = p ? p.unit : '台'; $('p-reorder').value = p ? p.reorder_point : 0; $('p-note').value = p ? p.note : ''; $('p-active').checked = p ? p.active : true;
+  $('p-kind').value = p ? (p.kind || 'item') : 'item';
+  $('p-bom-rows').innerHTML = '';
+  if (p) bomOf(p.id).forEach(function(b) { addBomRow(productById(b.child_id), b.qty); });
+  $('p-bom').classList.toggle('hidden', $('p-kind').value === 'item');
+  var dl = $('product-list-all') || (function() { var d = document.createElement('datalist'); d.id = 'product-list-all'; document.body.appendChild(d); return d; })();
+  dl.innerHTML = state.products.filter(function(x) { return x.active && (!p || x.id !== p.id); }).map(function(x) { return '<option value="' + esc(x.code + ' ' + x.name) + '">'; }).join('');
   showMsg('p-msg', '', ''); $('p-modal').classList.add('show'); $('p-code').focus();
 }
+function readBomRows(selfId) {
+  var rows = [], err = null;
+  $('p-bom-rows').querySelectorAll('.bom-row').forEach(function(r) {
+    var txt = r.querySelector('.c').value.trim(); if (!txt) return;
+    var c = resolveProduct(txt); var q = parseInt(r.querySelector('.q').value, 10);
+    if (!c) { err = '部品「' + txt + '」が製品マスタにありません。'; return; }
+    if (selfId && c.id === selfId) { err = '自分自身を部品にはできません。'; return; }
+    if (!(q > 0)) { err = c.code + ' の数量は1以上にしてください。'; return; }
+    if (rows.some(function(x) { return x.child_id === c.id; })) { err = c.code + ' が重複しています。'; return; }
+    rows.push({ child_id: c.id, qty: q });
+  });
+  return { rows: rows, err: err };
+}
 $('p-save').addEventListener('click', function() {
-  var rec = { code: $('p-code').value.trim(), name: $('p-name').value.trim(), category: $('p-cat').value.trim(), unit: $('p-unit').value.trim() || '台', reorder_point: parseInt($('p-reorder').value, 10) || 0, note: $('p-note').value.trim(), active: $('p-active').checked };
+  var rec = { code: $('p-code').value.trim(), name: $('p-name').value.trim(), category: $('p-cat').value.trim(), unit: $('p-unit').value.trim() || '台', reorder_point: parseInt($('p-reorder').value, 10) || 0, note: $('p-note').value.trim(), active: $('p-active').checked, kind: $('p-kind').value };
   if (!rec.code || !rec.name) { showMsg('p-msg', '型番と品名は必須です。', 'err'); return; }
-  var id = $('p-id').value;
-  var q = id ? sb.from('inv_products').update(rec).eq('id', +id) : sb.from('inv_products').insert(rec);
+  var id = $('p-id').value ? +$('p-id').value : null;
+  var bom = { rows: [], err: null };
+  if (rec.kind !== 'item') { bom = readBomRows(id); if (bom.err) { showMsg('p-msg', bom.err, 'err'); return; } if (!bom.rows.length) { showMsg('p-msg', '完成品・セットには部品を1つ以上登録してください。', 'err'); return; } }
+  var q = id ? sb.from('inv_products').update(rec).eq('id', id).select().single() : sb.from('inv_products').insert(rec).select().single();
   setBusy('p-save', true, '保存中...');
   q.then(function(res) {
+    if (res.error) throw res.error;
+    var pid = res.data.id;
+    return sb.from('inv_bom').delete().eq('parent_id', pid).then(function(r) {
+      if (r.error) throw r.error;
+      if (!bom.rows.length) return {};
+      return sb.from('inv_bom').insert(bom.rows.map(function(b) { return { parent_id: pid, child_id: b.child_id, qty: b.qty }; }));
+    });
+  }).then(function(r) {
+    if (r.error) throw r.error;
     setBusy('p-save', false, '保存');
-    if (res.error) { showMsg('p-msg', res.error.code === '23505' ? 'この型番は既に登録されています。' : '保存に失敗: ' + res.error.message, 'err'); return; }
     $('p-modal').classList.remove('show'); toast('保存しました'); loadAll();
+  }).catch(function(e) {
+    setBusy('p-save', false, '保存');
+    showMsg('p-msg', e.code === '23505' ? 'この型番は既に登録されています。' : '保存に失敗: ' + (e.message || e), 'err');
   });
 });
 
@@ -669,26 +789,28 @@ $('pa-save').addEventListener('click', function() {
 
 // ───────────────────────── Excel 出力 ─────────────────────────
 function sheetStock() {
-  return state.stock.map(function(s) { return { '型番': s.code, '品名': s.name, 'カテゴリ': s.category, '在庫数': s.stock, '単位': s.unit, '発注点': s.reorder_point, '状態': s.active ? '取扱中' : '廃番', '最終入出庫日': s.last_tx_date || '', '備考': s.note }; });
+  return state.stock.map(function(s) { return { '型番': s.code, '品名': s.name, '区分': PKIND_LABEL[s.kind] || '単品', 'カテゴリ': s.category, '在庫数': s.stock, '組立可能数': s.buildable == null ? '' : s.buildable, '単位': s.unit, '発注点': s.reorder_point, '状態': s.active ? '取扱中' : '廃番', '最終入出庫日': s.last_tx_date || '', '備考': s.note }; });
 }
 function sheetHistory(rows) {
-  return rows.map(function(t) { var p = productById(t.product_id) || {}, pa = partnerById(t.partner_id) || {}; return { '日付': t.tx_date, '種別': TYPE_LABEL[t.type], '型番': p.code || '', '品名': p.name || '', '数量': t.qty, '増減': signedQty(t), '取引先': pa.name || '', '伝票番号': t.ref_no, '備考': t.note, '登録者': t.created_by, '登録日時': t.created_at }; });
+  return rows.map(function(t) { var p = productById(t.product_id) || {}, pa = partnerById(t.partner_id) || {}; return { '日付': t.tx_date, '種別': TYPE_LABEL[t.type], '登録元': t.origin && t.origin !== 'manual' ? ORIGIN_LABEL[t.origin] : '', '型番': p.code || '', '品名': p.name || '', '数量': t.qty, '増減': signedQty(t), '取引先': pa.name || '', '伝票番号': t.ref_no, '備考': t.note, '登録者': t.created_by, '登録日時': t.created_at, 'グループID': t.group_id || '' }; });
 }
-function sheetProducts() { return state.products.map(function(p) { return { '型番': p.code, '品名': p.name, 'カテゴリ': p.category, '単位': p.unit, '発注点': p.reorder_point, '備考': p.note, '状態': p.active ? '取扱中' : '廃番' }; }); }
+function sheetProducts() { return state.products.map(function(p) { return { '型番': p.code, '品名': p.name, '区分': PKIND_LABEL[p.kind] || '単品', 'カテゴリ': p.category, '単位': p.unit, '発注点': p.reorder_point, '備考': p.note, '状態': p.active ? '取扱中' : '廃番' }; }); }
+function sheetBom() { return state.bom.map(function(b) { var p = productById(b.parent_id) || {}, c = productById(b.child_id) || {}; return { '親型番': p.code || '', '親品名': p.name || '', '子型番': c.code || '', '子品名': c.name || '', '数量': b.qty }; }); }
 function sheetPartners() { return state.partners.map(function(p) { return { '名称': p.name, '区分': KIND_LABEL[p.kind], '備考': p.note, '状態': p.active ? '有効' : '無効' }; }); }
 function download(wb, name) { XLSX.writeFile(wb, name + '_' + todayStr().replace(/-/g, '') + '.xlsx'); }
 function wbOf(sheets) { var wb = XLSX.utils.book_new(); sheets.forEach(function(s) { XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s.rows.length ? s.rows : [{}]), s.name); }); return wb; }
 $('x-stock').addEventListener('click', function() { download(wbOf([{ name: '在庫一覧', rows: sheetStock() }]), '在庫一覧'); });
 $('x-history').addEventListener('click', function() { download(wbOf([{ name: '入出庫履歴', rows: sheetHistory(filteredHistory()) }]), '入出庫履歴'); });
-$('x-all').addEventListener('click', function() { download(wbOf([{ name: '在庫一覧', rows: sheetStock() }, { name: '入出庫履歴', rows: sheetHistory(state.tx) }, { name: '製品マスタ', rows: sheetProducts() }, { name: '取引先', rows: sheetPartners() }]), '幹開発_在庫データ'); });
-$('t-products').addEventListener('click', function() { download(wbOf([{ name: '製品マスタ', rows: [{ '型番': 'SSW-1121', '品名': 'VEXA ヘッドセット', 'カテゴリ': 'VEXA', '単位': '台', '発注点': 10, '備考': '' }] }]), '製品マスタ_テンプレート'); });
+$('x-all').addEventListener('click', function() { download(wbOf([{ name: '在庫一覧', rows: sheetStock() }, { name: '入出庫履歴', rows: sheetHistory(state.tx) }, { name: '製品マスタ', rows: sheetProducts() }, { name: '構成', rows: sheetBom() }, { name: '取引先', rows: sheetPartners() }]), '幹開発_在庫データ'); });
+$('t-products').addEventListener('click', function() { download(wbOf([{ name: '製品マスタ', rows: [{ '型番': 'SSW-1121', '品名': 'VEXA ヘッドセット', '区分': '単品', 'カテゴリ': 'VEXA', '単位': '台', '発注点': 10, '備考': '' }, { '型番': 'SQ-SET-A', '品名': 'square 基本セット', '区分': 'セット', 'カテゴリ': 'SQUARE', '単位': 'セット', '発注点': 0, '備考': '構成は「構成」シートで登録' }] }]), '製品マスタ_テンプレート'); });
+$('t-bom').addEventListener('click', function() { download(wbOf([{ name: '構成', rows: [{ '親型番': 'SQ-SET-A', '子型番': 'SQ-BASE', '数量': 1 }, { '親型番': 'SQ-SET-A', '子型番': 'SQ-HANDSET', '数量': 4 }] }]), '構成_テンプレート'); });
 $('t-tx').addEventListener('click', function() { download(wbOf([{ name: '入出庫', rows: [{ '日付': todayStr(), '種別': '入庫', '型番': 'SSW-1121', '取引先': '', '数量': 10, '伝票番号': '', '備考': '初期在庫' }] }]), '入出庫_テンプレート'); });
 
 // ───────────────────────── Excel 取込 ─────────────────────────
-function readSheet(file) {
+function readSheet(file, preferName) {
   return new Promise(function(resolve, reject) {
     var fr = new FileReader();
-    fr.onload = function(e) { try { var wb = XLSX.read(e.target.result, { type: 'array', cellDates: true }); var ws = wb.Sheets[wb.SheetNames[0]]; resolve(XLSX.utils.sheet_to_json(ws, { defval: '' })); } catch (err) { reject(err); } };
+    fr.onload = function(e) { try { var wb = XLSX.read(e.target.result, { type: 'array', cellDates: true }); var ws = wb.Sheets[(preferName && wb.SheetNames.indexOf(preferName) >= 0) ? preferName : wb.SheetNames[0]]; resolve(XLSX.utils.sheet_to_json(ws, { defval: '' })); } catch (err) { reject(err); } };
     fr.onerror = reject; fr.readAsArrayBuffer(file);
   });
 }
@@ -708,7 +830,9 @@ $('f-products').addEventListener('change', function() {
       var code = String(cell(r, ['型番', 'code', 'Code'])).trim(), name = String(cell(r, ['品名', '製品名', 'name'])).trim();
       if (!code) { log.push('行' + (i + 2) + ': 型番が空のためスキップ'); return; }
       if (!name) { log.push('行' + (i + 2) + ': 品名が空のためスキップ (' + code + ')'); return; }
-      recs.push({ code: code, name: name, category: String(cell(r, ['カテゴリ', 'category'])).trim(), unit: String(cell(r, ['単位', 'unit'])).trim() || '台', reorder_point: parseInt(cell(r, ['発注点', 'reorder_point']), 10) || 0, note: String(cell(r, ['備考', 'note'])).trim(), active: true });
+      var kt = String(cell(r, ['区分', 'kind'])).trim(); var kind = kt ? PKIND_FROM_TEXT[kt] : 'item';
+      if (!kind) { log.push('行' + (i + 2) + ': 区分「' + kt + '」が不明（単品/完成品/セット）のためスキップ (' + code + ')'); return; }
+      recs.push({ code: code, name: name, kind: kind, category: String(cell(r, ['カテゴリ', 'category'])).trim(), unit: String(cell(r, ['単位', 'unit'])).trim() || '台', reorder_point: parseInt(cell(r, ['発注点', 'reorder_point']), 10) || 0, note: String(cell(r, ['備考', 'note'])).trim(), active: true });
     });
     var existing = recs.filter(function(r) { return state.products.some(function(p) { return p.code === r.code; }); }).length;
     log.unshift('読み取り: ' + rows.length + ' 行 → 取込対象 ' + recs.length + ' 件（新規 ' + (recs.length - existing) + '、上書き ' + existing + '）');
@@ -723,6 +847,38 @@ $('run-products').addEventListener('click', function() {
     if (res.error) { $('log-products').textContent += '\n失敗: ' + res.error.message; return; }
     toast(pendingProducts.length + ' 件の製品を取り込みました'); pendingProducts = null; $('run-products').classList.add('hidden'); $('f-products').value = ''; loadAll();
   });
+});
+var pendingBom = null;
+$('f-bom').addEventListener('change', function() {
+  var f = this.files[0]; if (!f) return;
+  readSheet(f, '構成').then(function(rows) {
+    var recs = [], log = [], parents = {};
+    rows.forEach(function(r, i) {
+      var ln = '行' + (i + 2) + ': ';
+      var pc = String(cell(r, ['親型番', 'parent'])).trim(), cc = String(cell(r, ['子型番', 'child'])).trim(), q = parseInt(cell(r, ['数量', 'qty']), 10);
+      var p = state.products.find(function(x) { return x.code.toLowerCase() === pc.toLowerCase(); }), c = state.products.find(function(x) { return x.code.toLowerCase() === cc.toLowerCase(); });
+      if (!p) { log.push(ln + '親型番「' + pc + '」が製品マスタにないためスキップ'); return; }
+      if (!c) { log.push(ln + '子型番「' + cc + '」が製品マスタにないためスキップ'); return; }
+      if (p.id === c.id) { log.push(ln + '親と子が同じためスキップ'); return; }
+      if (!(q > 0)) { log.push(ln + '数量が不正のためスキップ'); return; }
+      if (p.kind === 'item') log.push(ln + '注意: ' + p.code + ' の区分が「単品」です。組立やセット出庫には区分を完成品/セットに変更してください');
+      parents[p.id] = 1; recs.push({ parent_id: p.id, child_id: c.id, qty: q });
+    });
+    log.unshift('読み取り: ' + rows.length + ' 行 → 取込対象 ' + recs.length + ' 件（親製品 ' + Object.keys(parents).length + ' 件の構成を置き換え）');
+    $('log-bom').textContent = log.join('\n'); $('log-bom').classList.remove('hidden');
+    pendingBom = { recs: recs, parents: Object.keys(parents).map(Number) }; $('run-bom').classList.toggle('hidden', !recs.length);
+  }).catch(function(e) { $('log-bom').textContent = '読み込みエラー: ' + e.message; $('log-bom').classList.remove('hidden'); });
+});
+$('run-bom').addEventListener('click', function() {
+  if (!pendingBom) return; setBusy('run-bom', true, '取込中...');
+  sb.from('inv_bom').delete().in('parent_id', pendingBom.parents).then(function(r) {
+    if (r.error) throw r.error;
+    return sb.from('inv_bom').insert(pendingBom.recs);
+  }).then(function(r) {
+    setBusy('run-bom', false, 'この内容で取り込む');
+    if (r.error) throw r.error;
+    toast(pendingBom.recs.length + ' 件の構成を取り込みました'); pendingBom = null; $('run-bom').classList.add('hidden'); $('f-bom').value = ''; loadAll();
+  }).catch(function(e) { setBusy('run-bom', false, 'この内容で取り込む'); $('log-bom').textContent += '\n失敗: ' + (e.message || e); });
 });
 $('f-tx').addEventListener('change', function() {
   var f = this.files[0]; if (!f) return;
