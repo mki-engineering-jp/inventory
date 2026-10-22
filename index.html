@@ -309,6 +309,21 @@
         </table>
       </div>
     </div>
+    <div class="card">
+      <div class="row" style="align-items:center;justify-content:space-between">
+        <h2 style="margin:0">削除済みの履歴</h2>
+        <button id="d-toggle" class="btn sm fix">表示する</button>
+      </div>
+      <p class="muted" style="margin:8px 0 0">削除した履歴はここに残ります（誰が・いつ消したかも記録）。間違えて消した場合は「元に戻す」で復元できます。</p>
+      <div id="d-wrap" class="hidden" style="margin-top:10px">
+        <div class="tbl-wrap">
+          <table id="deleted-table">
+            <thead><tr><th>日付</th><th>種別</th><th>型番</th><th class="num">数量</th><th class="hide-sm">取引先</th><th class="hide-sm">伝票番号</th><th class="hide-sm">備考</th><th>削除者</th><th class="hide-sm">削除日時</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- 製品マスタ -->
@@ -872,10 +887,37 @@ function bindDelete(tb) {
         if (!confirm('この履歴を削除しますか？\n' + fmtDate(t.tx_date) + ' ' + TYPE_LABEL[t.type] + ' ' + (p ? p.code : '') + ' × ' + t.qty + '\n（在庫数も戻ります）')) return;
         q = sb.from('inv_transactions').delete().eq('id', id); photoPaths = t.photos || [];
       }
-      q.then(function(res) { if (res.error) { toast('削除に失敗: ' + res.error.message); return; } toast('削除しました'); deletePhotos(photoPaths); loadAll(); });
+      // 写真は削除済み履歴からの復元に備えて残す（Storage からは消さない）
+      q.then(function(res) { if (res.error) { toast('削除に失敗: ' + res.error.message); return; } toast('削除しました（「履歴」タブの削除済みから元に戻せます）'); loadAll(); if (deletedShown) loadDeleted(); });
     });
   });
 }
+// ───────── 削除済み履歴（inv_transactions_deleted：削除時にトリガーで自動退避） ─────────
+var deletedShown = false;
+function fmtDT(s) { if (!s) return ''; var d = new Date(s); return isNaN(d) ? String(s) : d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+function loadDeleted() {
+  var tb = $('deleted-table').querySelector('tbody'); tb.innerHTML = '<tr><td colspan="10" class="muted">読み込み中…</td></tr>';
+  sb.from('inv_transactions_deleted').select('*').order('deleted_at', { ascending: false }).limit(300).then(function(r) {
+    if (r.error) { tb.innerHTML = '<tr><td colspan="10" class="muted">読み込めません: ' + esc(r.error.message) + '</td></tr>'; return; }
+    var rows = r.data || [];
+    tb.innerHTML = rows.map(function(t) {
+      var p = productById(t.product_id) || { code: '?' }, pa = partnerById(t.partner_id);
+      return '<tr><td>' + fmtDate(t.tx_date) + '</td><td><span class="pill ' + t.type + '">' + (TYPE_LABEL[t.type] || t.type) + '</span>' + (t.origin && t.origin !== 'manual' ? ' <span class="pill origin">' + ORIGIN_LABEL[t.origin] + '</span>' : '') + '</td><td>' + esc(p.code) + '</td><td class="num">' + t.qty + '</td><td class="hide-sm">' + esc(pa ? pa.name : '') + '</td><td class="hide-sm">' + esc(t.ref_no) + '</td><td class="hide-sm">' + esc(t.note) + '</td><td class="muted">' + esc((t.deleted_by || '').split('@')[0]) + '</td><td class="hide-sm muted">' + fmtDT(t.deleted_at) + '</td><td><button class="btn sm" data-restore="' + t.id + '" data-group="' + (t.group_id || '') + '">元に戻す</button></td></tr>';
+    }).join('') || '<tr><td colspan="10" class="muted">削除済みの履歴はありません。</td></tr>';
+    tb.querySelectorAll('[data-restore]').forEach(function(b) {
+      b.addEventListener('click', function() {
+        var id = +b.getAttribute('data-restore'), gid = b.getAttribute('data-group');
+        var targets = gid ? rows.filter(function(x) { return x.group_id === gid; }) : rows.filter(function(x) { return x.id === id; });
+        if (!confirm((targets.length > 1 ? 'まとめて登録された ' + targets.length + ' 件をすべて' : 'この履歴を') + '元に戻しますか？（在庫数も反映されます）')) return;
+        b.disabled = true; b.textContent = '復元中...';
+        var chain = Promise.resolve();
+        targets.forEach(function(x) { chain = chain.then(function() { return sb.rpc('inv_restore_tx', { p_id: x.id }).then(function(rr) { if (rr.error) throw rr.error; return sb.from('inv_transactions_deleted').delete().eq('id', x.id); }); }); });
+        chain.then(function() { toast(targets.length + ' 件を元に戻しました'); loadAll(); loadDeleted(); }).catch(function(e) { toast('復元に失敗: ' + (e.message || e)); b.disabled = false; b.textContent = '元に戻す'; });
+      });
+    });
+  });
+}
+$('d-toggle').addEventListener('click', function() { deletedShown = !deletedShown; $('d-wrap').classList.toggle('hidden', !deletedShown); this.textContent = deletedShown ? '閉じる' : '表示する'; if (deletedShown) loadDeleted(); });
 function renderRecent() {
   var tb = $('recent-table').querySelector('tbody');
   tb.innerHTML = state.tx.slice(0, 15).map(function(t) { return txRow(t, ['date', 'type', 'product', 'qty', 'partner', 'photo', 'by', 'del']); }).join('') || '<tr><td colspan="8" class="muted">まだ登録がありません。</td></tr>';
