@@ -671,7 +671,7 @@ $('mic-btn').addEventListener('click', function() {
   if (recog) { recog.stop(); return; }
   recog = new SR(); recog.lang = 'ja-JP'; recog.interimResults = false; recog.maxAlternatives = 3;
   $('mic-btn').textContent = '● 聞き取り中…（タップで停止）';
-  showMsg('mic-msg', '例：「SSW-1121 出庫 5台 サイエンスアーツ」「VEXA 入庫 20」', 'info');
+  showMsg('mic-msg', 'おすすめの順：種別 → 製品 → 数量 → 取引先 →（伝票 番号）→（備考 〜）　例：「出庫 SSW-1121 5台 サイエンスアーツ 伝票 1234」', 'info');
   recog.onresult = function(e) {
     var alts = []; for (var i = 0; i < e.results[0].length; i++) alts.push(e.results[0][i].transcript);
     applyVoice(alts);
@@ -688,7 +688,15 @@ function kanjiNum(s) {
   return ok ? total + cur : null;
 }
 function applyVoice(alts) {
-  var text = alts[0] || '', n = normVoice(text), filled = [];
+  var text = alts[0] || '', filled = [], rest = text;
+  var toHalf = function(t) { return String(t).replace(/[Ａ-Ｚａ-ｚ０-９－]/g, function(c) { return c === '－' ? '-' : String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }); };
+  // 備考：「備考 〜」以降を備考に（最後に言う想定）
+  var nm = rest.match(/(?:備考|メモ)\s*(?:は|を)?\s*(.+)$/);
+  if (nm && nm[1].trim()) { $('e-note').value = nm[1].trim(); filled.push('備考=' + nm[1].trim()); rest = rest.slice(0, nm.index); }
+  // 伝票番号・注文番号：「伝票 1234」「注文番号 AB-123」「オーダー 5678」
+  var rm = toHalf(rest).match(/(?:伝票|注文|オーダー|発注|受注)(?:番号|ナンバー)?\s*(?:は|を)?\s*([A-Za-z0-9][A-Za-z0-9\-\/]*)/i);
+  if (rm) { $('e-ref').value = rm[1].toUpperCase(); filled.push('伝票番号=' + rm[1].toUpperCase()); rest = toHalf(rest).replace(rm[0], ' '); }
+  var n = normVoice(rest);
   // 種別
   var type = /分解/.test(n) ? 'unbuild' : /組立|組み立て|くみたて/.test(n) ? 'build' : /出庫|出荷|しゅっこ|出す/.test(n) ? 'out' : /入庫|入荷|にゅうこ|仕入/.test(n) ? 'in' : /調整|棚卸/.test(n) ? 'adjust' : null;
   if (type) { setEntryType(type === 'unbuild' ? 'build' : type); $('e-unbuild').checked = (type === 'unbuild'); filled.push('種別=' + (type === 'unbuild' ? '分解' : TYPE_LABEL[type])); }
@@ -707,7 +715,15 @@ function applyVoice(alts) {
   if (qty != null && qty > 0) { $('e-qty').value = qty; filled.push('数量=' + qty); }
   // 取引先
   var pa = null, paLen = 0;
-  state.partners.filter(function(x) { return x.active; }).forEach(function(x) { var nk = normVoice(x.name); if (nk.length >= 2 && n.indexOf(nk) >= 0 && nk.length > paLen) { pa = x; paLen = nk.length; } });
+  // 取引先：登録名（株式会社などは除く）が丸ごと含まれれば最優先。含まれなければ登録名の先頭3文字以上が一致する部分一致でも拾う（例「サイエンス」→「サイエンスアーツ」）
+  state.partners.filter(function(x) { return x.active; }).forEach(function(x) {
+    var nk = normVoice(String(x.name).replace(/株式会社|有限会社|合同会社|\(株\)|（株）|\(有\)|（有）/g, ''));
+    if (nk.length < 2) return;
+    var score = 0;
+    if (n.indexOf(nk) >= 0) score = nk.length + 100;
+    else { for (var L = nk.length - 1; L >= 3; L--) { if (n.indexOf(nk.slice(0, L)) >= 0) { score = L; break; } } }
+    if (score > paLen) { pa = x; paLen = score; }
+  });
   if (pa) { renderEntryLists(); $('e-partner').value = String(pa.id); if ($('e-partner').value !== String(pa.id)) { pa = null; } else filled.push('取引先=' + pa.name); }
   updateProductInfo();
   showMsg('mic-msg', '「' + text + '」→ ' + (filled.length ? filled.join('、') + '　内容を確認して「登録する」を押してください。' : '製品や数量を認識できませんでした。型番か品名、種別、数量を含めて話してください。'), filled.length ? 'ok' : 'err');
