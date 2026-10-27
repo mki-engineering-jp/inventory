@@ -142,7 +142,7 @@
 <body>
 
 <header>
-  <div class="brand">幹開発 在庫管理<small>社内専用</small><small id="app-ver" style="margin-left:6px;opacity:.6">v2026.10.27</small></div>
+  <div class="brand">幹開発 在庫管理<small>社内専用</small><small id="app-ver" style="margin-left:6px;opacity:.6">v2026.10.27b</small></div>
   <div class="user"><span id="user-email"></span><button id="logout-btn" class="hidden">ログアウト</button></div>
 </header>
 
@@ -1168,12 +1168,13 @@ $('f-dn').addEventListener('change', function() {
       log.push('■ ' + nt.file + '　伝票 ' + nt.ref + '　' + nt.date + '　宛先 ' + (pa ? pa.name : nt.customer + '（新規登録）') + (nt.tekiyo ? '　摘要 ' + nt.tekiyo : ''));
       if (!nt.items.length) { log.push('　明細が見つかりません'); return; }
       nt.items.forEach(function(it) {
-        var p = state.products.find(function(x) { return x.code.toLowerCase() === it.code.toLowerCase(); });
+        // 廃番（active=false）の製品は照合に使わない → 未登録扱いにして確認表で紐づけ先を選んでもらう
+        var p = state.products.find(function(x) { return x.active && x.code.toLowerCase() === it.code.toLowerCase(); });
         var dup = p && state.tx.some(function(t) { return t.type === 'out' && t.product_id === p.id && t.ref_no === nt.ref; });
         if (dup) { skipped++; log.push('　' + it.code + ' × ' + it.qty + '　→ 伝票 ' + nt.ref + ' で登録済みのためスキップ'); return; }
         if (!p) newProducts[it.code] = 1;
         recs.push({ ref: nt.ref, date: nt.date, customer: nt.customer, partner_id: pa ? pa.id : null, code: it.code, product: p || null, qty: it.qty, unit_price: it.unit_price, note: [nt.tekiyo, it.memo].filter(Boolean).join(' ') });
-        log.push('　' + it.code + (it.raw !== it.code ? '（納品書表記: ' + it.raw + '）' : '') + ' × ' + it.qty + (it.unit_price != null ? '　@' + yen(it.unit_price) : '') + (p ? (p.kind === 'kit' ? '　（セット：部品を自動出庫）' : '') : '　（製品マスタに新規登録）'));
+        log.push('　' + it.code + (it.raw !== it.code ? '（納品書表記: ' + it.raw + '）' : '') + ' × ' + it.qty + (it.unit_price != null ? '　@' + yen(it.unit_price) : '') + (p ? (p.kind === 'kit' ? '　（セット：部品を自動出庫）' : '') : '　（製品マスタにない型番 → 下の表で登録先を確認）'));
       });
     });
     var np = Object.keys(newProducts), npa = Object.keys(newPartners);
@@ -1199,7 +1200,8 @@ function renderDnMap(newCodes) {
       (exact.length ? '<optgroup label="同じ型番（表記ゆれ）">' + exact.map(function(p) { return opt(p, ''); }).join('') + '</optgroup>' : '') +
       (near.length ? '<optgroup label="似た型番">' + near.map(function(p) { return opt(p, ''); }).join('') + '</optgroup>' : '') +
       (rest.length ? '<optgroup label="その他の製品">' + rest.map(function(p) { return opt(p, ''); }).join('') + '</optgroup>' : '');
-    var def = exact.length ? String(exact[0].id) : 'new';
+    var exactLive = exact.filter(function(p) { return p.active; });
+    var def = exactLive.length ? String(exactLive[0].id) : 'new';  // 廃番しか一致しなければ初期値は新規（表で選び直せる）
     pendingDn.map[code] = def;
     return '<tr><td><strong>' + esc(code) + '</strong></td><td><select data-map="' + esc(code) + '" style="min-width:240px">' + html + '</select></td></tr>';
   }).join('');
@@ -1216,15 +1218,20 @@ $('run-dn').addEventListener('click', function() {
       var nc = normCode(c);
       var base = state.products.filter(function(p) { return p.active && normCode(p.code) !== nc && (nc.indexOf(normCode(p.code)) === 0 || normCode(p.code).indexOf(nc) === 0); })
         .sort(function(a, b) { return b.code.length - a.code.length; })[0];
-      return '・' + c + (base ? '　← 似た型番「' + base.code + '」があります。同じ製品なら「キャンセル」を押して紐づけ先を選んでください' : '');
+      var dead = state.products.find(function(x) { return !x.active && x.code.toLowerCase() === c.toLowerCase(); });
+      return '・' + c + (dead ? '　← 同じ型番の廃番があります（登録すると復活します）' : '') + (base ? '　← 似た型番「' + base.code + '」があります。同じ製品なら「キャンセル」を押して紐づけ先を選んでください' : '');
     });
     if (!window.confirm('次の型番を「新しい製品」として製品マスタに登録します。\n\n' + lines.join('\n') + '\n\nこのまま登録してよいですか？')) return;
   }
   setBusy('run-dn', true, '登録中...');
   // 「新しい製品として登録」を選んだ型番だけ自動登録。既存製品に紐づけた型番はその製品の出庫にする
   var toCreate = d.newProducts.filter(function(c) { return (d.map[c] || 'new') === 'new'; });
-  var step = toCreate.length ? sb.from('inv_products').insert(toCreate.map(function(c) { return { code: c, name: c, kind: 'item', unit: '台', category: '', note: '納品書取込で自動登録', active: true }; })) : Promise.resolve({});
+  var revive = [], create = [];
+  toCreate.forEach(function(c) { var old = state.products.find(function(x) { return !x.active && x.code.toLowerCase() === c.toLowerCase(); }); if (old) revive.push(old.id); else create.push(c); });
+  var step = create.length ? sb.from('inv_products').insert(create.map(function(c) { return { code: c, name: c, kind: 'item', unit: '台', category: '', note: '納品書取込で自動登録', active: true }; })) : Promise.resolve({});
   step.then(function(r0) { if (r0.error) throw r0.error;
+    return revive.length ? sb.from('inv_products').update({ active: true }).in('id', revive) : {};
+  }).then(function(r00) { if (r00.error) throw r00.error;
     return d.newPartners.length ? sb.from('inv_partners').insert(d.newPartners.map(function(n) { return { name: n, kind: 'customer' }; })) : { };
   }).then(function(r1) { if (r1.error) throw r1.error;
     return Promise.all([sb.from('inv_products').select('*'), sb.from('inv_partners').select('*')]);
