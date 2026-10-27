@@ -142,7 +142,7 @@
 <body>
 
 <header>
-  <div class="brand">幹開発 在庫管理<small>社内専用</small></div>
+  <div class="brand">幹開発 在庫管理<small>社内専用</small><small id="app-ver" style="margin-left:6px;opacity:.6">v2026.10.27</small></div>
   <div class="user"><span id="user-email"></span><button id="logout-btn" class="hidden">ログアウト</button></div>
 </header>
 
@@ -370,7 +370,7 @@
     </div>
     <div class="card">
       <h2>幹開発 納品書の取込（出庫登録）</h2>
-      <p class="muted" style="margin-top:0">見積・注文書アプリで作った納品書（.xlsx、シート「納品書BK」）をそのまま読み込み、<strong>出庫</strong>として登録します。複数ファイルをまとめて選べます。伝票番号は納品書No（例 SA26086）、取引先は宛名、備考には摘要と納品書の備考が入ります。納品書の単価は<strong>販売単価</strong>として記録し、在庫金額（仕入単価ベース）には影響しません。<br>型番が製品マスタにない場合は自動で登録します（品名は型番と同じ。あとから「製品」タブで直せます）。同じ伝票番号・型番が既に登録済みの行は二重登録を防ぐためスキップします。</p>
+      <p class="muted" style="margin-top:0">見積・注文書アプリで作った納品書（.xlsx、シート「納品書BK」）をそのまま読み込み、<strong>出庫</strong>として登録します。複数ファイルをまとめて選べます。伝票番号は納品書No（例 SA26086）、取引先は宛名、備考には摘要と納品書の備考が入ります。納品書の単価は<strong>販売単価</strong>として記録し、在庫金額（仕入単価ベース）には影響しません。<br>型番が製品マスタにない場合は、下に確認表が出て「新しい製品として登録」か「既存の製品に紐づけ」かを選べます（新規登録のまま登録ボタンを押すと、もう一度確認が出ます）。同じ伝票番号・型番が既に登録済みの行は二重登録を防ぐためスキップします。</p>
       <div class="row">
         <input type="file" id="f-dn" accept=".xlsx,.xls" multiple>
       </div>
@@ -1207,8 +1207,20 @@ function renderDnMap(newCodes) {
   wrap.classList.remove('hidden');
 }
 $('run-dn').addEventListener('click', function() {
-  if (!pendingDn) return; setBusy('run-dn', true, '登録中...');
+  if (!pendingDn) return;
   var d = pendingDn;
+  // 新規製品として登録する型番が残っていれば、登録前にもう一度確認（似た型番があればそれも示す）
+  var stillNew = d.newProducts.filter(function(c) { return (d.map[c] || 'new') === 'new'; });
+  if (stillNew.length) {
+    var lines = stillNew.map(function(c) {
+      var nc = normCode(c);
+      var base = state.products.filter(function(p) { return p.active && normCode(p.code) !== nc && (nc.indexOf(normCode(p.code)) === 0 || normCode(p.code).indexOf(nc) === 0); })
+        .sort(function(a, b) { return b.code.length - a.code.length; })[0];
+      return '・' + c + (base ? '　← 似た型番「' + base.code + '」があります。同じ製品なら「キャンセル」を押して紐づけ先を選んでください' : '');
+    });
+    if (!window.confirm('次の型番を「新しい製品」として製品マスタに登録します。\n\n' + lines.join('\n') + '\n\nこのまま登録してよいですか？')) return;
+  }
+  setBusy('run-dn', true, '登録中...');
   // 「新しい製品として登録」を選んだ型番だけ自動登録。既存製品に紐づけた型番はその製品の出庫にする
   var toCreate = d.newProducts.filter(function(c) { return (d.map[c] || 'new') === 'new'; });
   var step = toCreate.length ? sb.from('inv_products').insert(toCreate.map(function(c) { return { code: c, name: c, kind: 'item', unit: '台', category: '', note: '納品書取込で自動登録', active: true }; })) : Promise.resolve({});
