@@ -142,7 +142,10 @@
     header .brand small { display: none; }
     main { padding-top: 12px; }
     .hide-sm { display: none; }
-    th, td { padding: 8px 6px; }
+    th, td { padding: 8px 5px; white-space: nowrap; font-size: 13px; }
+    td .pill { display: inline-block; white-space: nowrap; }
+    .sub-sm { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.5; white-space: normal; word-break: break-all; }
+    .sub-sm b { color: var(--text, #333); font-weight: 600; }
   }
   @media (min-width: 641px) { :root { --nav-h: 0px; } .only-sm { display: none; } }
 </style>
@@ -870,12 +873,18 @@ function applyVoice(alts) {
   showMsg('mic-msg', '「' + text + '」→ ' + (filled.length ? filled.join('、') + '　内容を確認して「登録する」を押してください。' : '製品や数量を認識できませんでした。型番か品名、種別、数量を含めて話してください。'), filled.length ? 'ok' : 'err');
 }
 
+// スマホ表示用：PCでは列として出す項目（品名・取引先・伝票・シリアル・備考・登録者）を型番の下にまとめる
+function subSm(parts) {
+  var items = parts.filter(function(x) { return x[1]; }).map(function(x) { return (x[0] ? '<b>' + x[0] + '</b> ' : '') + esc(x[1]); });
+  return items.length ? '<span class="sub-sm only-sm">' + items.join('<br>') + '</span>' : '';
+}
 function txRow(t, cols) {
   var p = productById(t.product_id) || { code: '?', name: '', unit: '' }, pa = partnerById(t.partner_id);
   var q = (t.type === 'in' ? '+' : t.type === 'out' ? '−' : (t.qty > 0 ? '+' : '−')) + Math.abs(t.qty);
+  var sub = subSm([['', p.name], ['', pa ? pa.name : ''], ['伝票', t.ref_no], ['S/N', t.serial_no], ['備考', t.note], ['', (t.created_by || '').split('@')[0]]]);
   var cells = {
     date: '<td>' + fmtDate(t.tx_date) + '</td>', type: '<td><span class="pill ' + t.type + '">' + TYPE_LABEL[t.type] + '</span>' + (t.origin && t.origin !== 'manual' ? ' <span class="pill origin">' + ORIGIN_LABEL[t.origin] + '</span>' : '') + '</td>',
-    product: '<td>' + esc(p.code) + '<span class="hide-sm muted"> ' + esc(p.name) + '</span></td>', code: '<td>' + esc(p.code) + '</td>', name: '<td class="hide-sm">' + esc(p.name) + '</td>',
+    product: '<td>' + esc(p.code) + '<span class="hide-sm muted"> ' + esc(p.name) + '</span>' + sub + '</td>', code: '<td>' + esc(p.code) + sub + '</td>', name: '<td class="hide-sm">' + esc(p.name) + '</td>',
     qty: '<td class="num"><strong>' + q + '</strong></td>', partner: '<td class="hide-sm">' + esc(pa ? pa.name : '') + '</td>', ref: '<td class="hide-sm">' + esc(t.ref_no) + '</td>',
     serial: '<td class="hide-sm" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(t.serial_no || '') + '">' + esc(t.serial_no || '') + '</td>',
     photo: '<td>' + (t.photos && t.photos.length ? '<button class="btn sm" data-photo="' + t.id + '">📷' + t.photos.length + '</button>' : '') + '</td>',
@@ -914,7 +923,7 @@ function loadDeleted() {
     var rows = r.data || [];
     tb.innerHTML = rows.map(function(t) {
       var p = productById(t.product_id) || { code: '?' }, pa = partnerById(t.partner_id);
-      return '<tr><td>' + fmtDate(t.tx_date) + '</td><td><span class="pill ' + t.type + '">' + (TYPE_LABEL[t.type] || t.type) + '</span>' + (t.origin && t.origin !== 'manual' ? ' <span class="pill origin">' + ORIGIN_LABEL[t.origin] + '</span>' : '') + '</td><td>' + esc(p.code) + '</td><td class="num">' + t.qty + '</td><td class="hide-sm">' + esc(pa ? pa.name : '') + '</td><td class="hide-sm">' + esc(t.ref_no) + '</td><td class="hide-sm">' + esc(t.note) + '</td><td class="muted">' + esc((t.deleted_by || '').split('@')[0]) + '</td><td class="hide-sm muted">' + fmtDT(t.deleted_at) + '</td><td><button class="btn sm" data-restore="' + t.id + '" data-group="' + (t.group_id || '') + '">元に戻す</button></td></tr>';
+      return '<tr><td>' + fmtDate(t.tx_date) + '</td><td><span class="pill ' + t.type + '">' + (TYPE_LABEL[t.type] || t.type) + '</span>' + (t.origin && t.origin !== 'manual' ? ' <span class="pill origin">' + ORIGIN_LABEL[t.origin] + '</span>' : '') + '</td><td>' + esc(p.code) + subSm([['', p.name], ['', pa ? pa.name : ''], ['伝票', t.ref_no], ['備考', t.note], ['削除', fmtDT(t.deleted_at)]]) + '</td><td class="num">' + t.qty + '</td><td class="hide-sm">' + esc(pa ? pa.name : '') + '</td><td class="hide-sm">' + esc(t.ref_no) + '</td><td class="hide-sm">' + esc(t.note) + '</td><td class="muted">' + esc((t.deleted_by || '').split('@')[0]) + '</td><td class="hide-sm muted">' + fmtDT(t.deleted_at) + '</td><td><button class="btn sm" data-restore="' + t.id + '" data-group="' + (t.group_id || '') + '">元に戻す</button></td></tr>';
     }).join('') || '<tr><td colspan="10" class="muted">削除済みの履歴はありません。</td></tr>';
     tb.querySelectorAll('[data-restore]').forEach(function(b) {
       b.addEventListener('click', function() {
